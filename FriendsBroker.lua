@@ -644,23 +644,36 @@ end
 function FriendsBroker:ExecuteAction(action, friend)
     self:CancelTooltipHideTimer()
 
-    -- Debug: confirm click is reaching this function
-    DGF:Print("DGF action: " .. tostring(action) .. " on " .. tostring(friend.name) .. " (BNet=" .. tostring(friend.isBNet) .. ")")
-
     if action == "whisper" then
+        -- Hide tooltip first so it doesn't compete for focus
+        if tooltipFrame then tooltipFrame:Hide() end
+
         if friend.isBNet then
+            -- BNet whisper: use ChatFrameUtil.SendBNetTell (the modern API)
+            -- ChatFrame_SendBNetTell is deprecated and may not exist
             local tellName = friend.accountName
             if not tellName or tellName == "" then
                 tellName = friend.battleTag and friend.battleTag:match("^([^#]+)") or friend.name
             end
-            -- Hide tooltip first, then open chat
-            if tooltipFrame then tooltipFrame:Hide() end
-            ChatFrame_SendBNetTell(tellName)
+            if ChatFrameUtil and ChatFrameUtil.SendBNetTell then
+                ChatFrameUtil.SendBNetTell(tellName)
+            elseif ChatFrame_SendBNetTell then
+                ChatFrame_SendBNetTell(tellName)
+            else
+                -- Last resort: manually open chat with /w
+                ChatFrameUtil.OpenChat("/w " .. tellName .. " ")
+            end
         else
+            -- WoW character whisper: use ChatFrameUtil.SendTell (the modern API)
             local name = friend.fullName or friend.name
             if name and name ~= "" then
-                if tooltipFrame then tooltipFrame:Hide() end
-                SetItemRef("player:" .. name, format("|Hplayer:%1$s|h[%1$s]|h", name), "LeftButton")
+                if ChatFrameUtil and ChatFrameUtil.SendTell then
+                    ChatFrameUtil.SendTell(name)
+                elseif ChatFrame_SendTell then
+                    ChatFrame_SendTell(name)
+                else
+                    ChatFrameUtil.OpenChat("/w " .. name .. " ")
+                end
             end
         end
         return
@@ -691,15 +704,13 @@ function FriendsBroker:ExecuteAction(action, friend)
         elseif realm ~= "" then
             name = name .. "-" .. realm
         end
-        local editBox = ChatFrame1EditBox or _G["ChatFrame1EditBox"]
-        if editBox then
-            if not editBox:IsShown() then
-                ChatFrame_OpenChat("")
-            end
-            editBox:Insert(name)
+        -- Open chat if not already open, then insert
+        if not ChatFrame1EditBox:IsShown() then
+            ChatFrameUtil.OpenChat("")
         end
+        ChatFrame1EditBox:Insert(name)
     end
 
-    -- Hide tooltip after action (except whisper which hides before)
+    -- Hide tooltip after action (except whisper which hides before and returns)
     if tooltipFrame then tooltipFrame:Hide() end
 end
