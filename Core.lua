@@ -28,6 +28,22 @@ ns.defaults = {
                 middleClick = "none",
             },
         },
+        guild = {
+            labelFormat = "Guild: <online>/<total>",
+            sortBy = "name",
+            sortAscending = true,
+            classColorNames = true,
+            tooltipScale = 1.0,
+            tooltipWidth = 480,
+            rowSpacing = 4,
+            clickActions = {
+                leftClick = "whisper",
+                rightClick = "invite",
+                shiftLeftClick = "who",
+                shiftRightClick = "copyname",
+                middleClick = "none",
+            },
+        },
     },
 }
 

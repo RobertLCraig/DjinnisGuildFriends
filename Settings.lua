@@ -215,6 +215,164 @@ function DGF:SetupOptions()
                     },
                 },
             },
+            guild = {
+                type = "group",
+                name = "Guild",
+                order = 3,
+                args = {
+                    headerDisplay = {
+                        type = "header",
+                        name = "Display Settings",
+                        order = 1,
+                    },
+                    labelFormat = {
+                        type = "input",
+                        name = "Panel Text Format",
+                        desc = "Text shown in the LDB display panel.\n\nAvailable tokens:\n  <online> - Online members count\n  <total> - Total members count\n  <offline> - Offline members count",
+                        width = "full",
+                        order = 2,
+                        get = function() return self.db.profile.guild.labelFormat end,
+                        set = function(_, val)
+                            self.db.profile.guild.labelFormat = val
+                            if ns.GuildBroker then ns.GuildBroker:UpdateData() end
+                        end,
+                    },
+                    tooltipScale = {
+                        type = "range",
+                        name = "Tooltip Scale",
+                        desc = "Scale of the guild tooltip",
+                        min = 0.5, max = 2.0, step = 0.05,
+                        order = 3,
+                        get = function() return self.db.profile.guild.tooltipScale end,
+                        set = function(_, val)
+                            self.db.profile.guild.tooltipScale = val
+                        end,
+                    },
+                    tooltipWidth = {
+                        type = "range",
+                        name = "Tooltip Width",
+                        desc = "Width of the guild tooltip in pixels",
+                        min = 300, max = 800, step = 10,
+                        order = 4,
+                        get = function() return self.db.profile.guild.tooltipWidth end,
+                        set = function(_, val)
+                            self.db.profile.guild.tooltipWidth = val
+                        end,
+                    },
+                    rowSpacing = {
+                        type = "range",
+                        name = "Row Spacing",
+                        desc = "Vertical spacing between member entries in pixels",
+                        min = 0, max = 16, step = 1,
+                        order = 5,
+                        get = function() return self.db.profile.guild.rowSpacing end,
+                        set = function(_, val)
+                            self.db.profile.guild.rowSpacing = val
+                        end,
+                    },
+                    headerFilter = {
+                        type = "header",
+                        name = "Display Options",
+                        order = 10,
+                    },
+                    classColorNames = {
+                        type = "toggle",
+                        name = "Class-Colored Names",
+                        desc = "Color guild member names by their class color",
+                        order = 11,
+                        get = function() return self.db.profile.guild.classColorNames end,
+                        set = function(_, val)
+                            self.db.profile.guild.classColorNames = val
+                            if ns.GuildBroker then ns.GuildBroker:UpdateData() end
+                        end,
+                    },
+                    headerSort = {
+                        type = "header",
+                        name = "Sorting",
+                        order = 20,
+                    },
+                    sortBy = {
+                        type = "select",
+                        name = "Sort By",
+                        desc = "How to sort the guild list in the tooltip",
+                        order = 21,
+                        values = {
+                            name   = "Name",
+                            class  = "Class",
+                            level  = "Level",
+                            zone   = "Zone",
+                            rank   = "Rank",
+                            status = "Status",
+                        },
+                        get = function() return self.db.profile.guild.sortBy end,
+                        set = function(_, val)
+                            self.db.profile.guild.sortBy = val
+                            if ns.GuildBroker then ns.GuildBroker:UpdateData() end
+                        end,
+                    },
+                    sortAscending = {
+                        type = "toggle",
+                        name = "Ascending Order",
+                        desc = "Sort in ascending (A-Z, low-high) or descending order",
+                        order = 22,
+                        get = function() return self.db.profile.guild.sortAscending end,
+                        set = function(_, val)
+                            self.db.profile.guild.sortAscending = val
+                            if ns.GuildBroker then ns.GuildBroker:UpdateData() end
+                        end,
+                    },
+                    headerClick = {
+                        type = "header",
+                        name = "Click Actions",
+                        order = 30,
+                    },
+                    clickDesc = {
+                        type = "description",
+                        name = "Configure what happens when you click on a guild member in the tooltip.",
+                        order = 31,
+                    },
+                    leftClick = {
+                        type = "select",
+                        name = "Left Click",
+                        order = 32,
+                        values = ns.ACTION_VALUES,
+                        get = function() return self.db.profile.guild.clickActions.leftClick end,
+                        set = function(_, val) self.db.profile.guild.clickActions.leftClick = val end,
+                    },
+                    rightClick = {
+                        type = "select",
+                        name = "Right Click",
+                        order = 33,
+                        values = ns.ACTION_VALUES,
+                        get = function() return self.db.profile.guild.clickActions.rightClick end,
+                        set = function(_, val) self.db.profile.guild.clickActions.rightClick = val end,
+                    },
+                    shiftLeftClick = {
+                        type = "select",
+                        name = "Shift + Left Click",
+                        order = 34,
+                        values = ns.ACTION_VALUES,
+                        get = function() return self.db.profile.guild.clickActions.shiftLeftClick end,
+                        set = function(_, val) self.db.profile.guild.clickActions.shiftLeftClick = val end,
+                    },
+                    shiftRightClick = {
+                        type = "select",
+                        name = "Shift + Right Click",
+                        order = 35,
+                        values = ns.ACTION_VALUES,
+                        get = function() return self.db.profile.guild.clickActions.shiftRightClick end,
+                        set = function(_, val) self.db.profile.guild.clickActions.shiftRightClick = val end,
+                    },
+                    middleClick = {
+                        type = "select",
+                        name = "Middle Click",
+                        order = 36,
+                        values = ns.ACTION_VALUES,
+                        get = function() return self.db.profile.guild.clickActions.middleClick end,
+                        set = function(_, val) self.db.profile.guild.clickActions.middleClick = val end,
+                    },
+                },
+            },
             profiles = AceDBOptions:GetOptionsTable(self.db),
         },
     }
