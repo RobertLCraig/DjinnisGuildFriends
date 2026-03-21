@@ -101,21 +101,17 @@ function GuildBroker:UpdateData()
     local members = {}
 
     self.guildName = GetGuildInfo("player") or ""
-    local totalMembers, onlineMembers = GetNumGuildMembers()
+    local totalMembers = GetNumGuildMembers()
     self.totalCount = totalMembers or 0
 
     local onlineCount = 0
     for i = 1, totalMembers do
         local name, rank, rankIndex, level, _, zone, note, officerNote,
-              connected, memberStatus, className, _, _, isMobile, _, _, guid =
+              connected, memberStatus, classFile, _, _, isMobile =
               GetGuildRosterInfo(i)
 
         if not name then break end
 
-        -- className from GetGuildRosterInfo is the class FILE token (e.g., "WARRIOR")
-        local classToken = className
-
-        -- Determine status
         local status = memberStatus or 0
         local isOnline = connected or isMobile
 
@@ -130,8 +126,7 @@ function GuildBroker:UpdateData()
             table.insert(members, {
                 name       = name,
                 level      = level or 0,
-                classFile  = classToken,
-                className  = className or "",
+                classFile  = classFile or "",
                 area       = displayZone,
                 rank       = rank or "",
                 rankIndex  = rankIndex or 0,
@@ -143,7 +138,6 @@ function GuildBroker:UpdateData()
                 notes      = note or "",
                 officerNote = officerNote or "",
                 fullName   = name,
-                guid       = guid,
             })
         end
     end
@@ -156,8 +150,8 @@ function GuildBroker:UpdateData()
     -- Update cache
     self.guildCache = members
 
-    -- Update LDB text
-    dataobj.text = DGF:FormatLabel(db.labelFormat, self.onlineCount, self.totalCount)
+    -- Update LDB text (supports <guildname> token)
+    dataobj.text = DGF:FormatLabel(db.labelFormat, self.onlineCount, self.totalCount, { guildname = self.guildName })
 
     -- Refresh tooltip if visible
     if tooltipFrame and tooltipFrame:IsShown() then
@@ -172,8 +166,8 @@ end
 local SORT_FUNCTIONS = {
     name = function(a, b) return a.name < b.name end,
     class = function(a, b)
-        if a.className == b.className then return a.name < b.name end
-        return a.className < b.className
+        if a.classFile == b.classFile then return a.name < b.name end
+        return a.classFile < b.classFile
     end,
     level = function(a, b)
         if a.level == b.level then return a.name < b.name end
@@ -481,35 +475,44 @@ function GuildBroker:PopulateTooltip()
     end
     tooltipFrame.hint:SetText("|cff888888" .. table.concat(hints, "  |  ") .. "|r")
 
-    -- Hide all existing rows
+    -- Hide all existing rows and group headers
     for _, row in pairs(rowPool) do
         row:Hide()
+    end
+    if tooltipFrame.groupHeaders then
+        for _, hdr in pairs(tooltipFrame.groupHeaders) do
+            hdr:Hide()
+        end
     end
 
     local rowSpacing = db.rowSpacing or 4
     local rowStep = ROW_HEIGHT + rowSpacing
+    local groupBy = db.groupBy or "none"
+
+    -- Build groups
+    local groups, groupOrder = self:BuildGroups(members, groupBy)
 
     local yOffset = colY - 16 -- after column headers
-    for i, member in ipairs(members) do
-        local row = GetOrCreateRow(tooltipFrame, i)
+    local rowIdx = 0
+
+    local function RenderMember(member)
+        rowIdx = rowIdx + 1
+        local row = GetOrCreateRow(tooltipFrame, rowIdx)
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", tooltipFrame, "TOPLEFT", TOOLTIP_PADDING, yOffset)
         row.memberData = member
 
-        -- Status prefix
         local status = STATUS_STRINGS[member.status] or ""
         if member.isMobile and not member.connected then
             status = MOBILE_ICON
         end
 
-        -- Strip realm from name for display (guild members show Name-Realm)
         local displayName = member.name
         local dashPos = displayName:find("-")
         if dashPos then
             displayName = displayName:sub(1, dashPos - 1)
         end
 
-        -- Apply class coloring if enabled
         if useClassColors and member.classFile then
             row.nameText:SetText(status .. DGF:ClassColorText(displayName, member.classFile))
         else
@@ -524,9 +527,37 @@ function GuildBroker:PopulateTooltip()
         yOffset = yOffset - rowStep
     end
 
+    if groupBy == "none" then
+        for _, member in ipairs(members) do
+            RenderMember(member)
+        end
+    else
+        for _, groupName in ipairs(groupOrder) do
+            local groupMembers = groups[groupName]
+            if groupMembers and #groupMembers > 0 then
+                -- Group header
+                yOffset = yOffset - 4 -- extra spacing before header
+                local hdr = self:GetOrCreateGroupHeader(tooltipFrame, groupName)
+                hdr:ClearAllPoints()
+                hdr:SetPoint("TOPLEFT", tooltipFrame, "TOPLEFT", TOOLTIP_PADDING, yOffset)
+                hdr:SetText(DGF:ColorText(groupName .. " (" .. #groupMembers .. ")", 1, 0.82, 0))
+                hdr:Show()
+                yOffset = yOffset - 16
+
+                -- Check collapsed state
+                if not db.groupCollapsed[groupName] then
+                    for _, member in ipairs(groupMembers) do
+                        RenderMember(member)
+                    end
+                end
+            end
+        end
+    end
+
     -- Empty state
     if #members == 0 then
-        local row = GetOrCreateRow(tooltipFrame, 1)
+        rowIdx = rowIdx + 1
+        local row = GetOrCreateRow(tooltipFrame, rowIdx)
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", tooltipFrame, "TOPLEFT", TOOLTIP_PADDING, yOffset)
         row.memberData = nil
@@ -541,6 +572,95 @@ function GuildBroker:PopulateTooltip()
     -- Size the tooltip
     local totalHeight = math.abs(yOffset) + TOOLTIP_PADDING + 20
     tooltipFrame:SetHeight(totalHeight)
+end
+
+---------------------------------------------------------------------------
+-- Grouping
+---------------------------------------------------------------------------
+
+function GuildBroker:GetOrCreateGroupHeader(parent, name)
+    if not parent.groupHeaders then parent.groupHeaders = {} end
+    if parent.groupHeaders[name] then return parent.groupHeaders[name] end
+
+    local hdr = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    hdr:SetJustifyH("LEFT")
+    hdr:SetHeight(14)
+    hdr:SetPoint("RIGHT", parent, "RIGHT", -TOOLTIP_PADDING, 0)
+    parent.groupHeaders[name] = hdr
+    return hdr
+end
+
+function GuildBroker:BuildGroups(members, groupBy)
+    if groupBy == "none" then return {}, {} end
+
+    local groups = {}
+    local groupSet = {}
+    local playerZone = GetRealZoneText() or ""
+
+    for _, member in ipairs(members) do
+        local groupName
+
+        if groupBy == "rank" then
+            groupName = member.rank or "Unknown"
+        elseif groupBy == "level" then
+            local lvl = member.level or 0
+            if lvl >= 80 then groupName = "80+"
+            elseif lvl >= 70 then groupName = "70-79"
+            elseif lvl >= 60 then groupName = "60-69"
+            elseif lvl >= 50 then groupName = "50-59"
+            elseif lvl >= 40 then groupName = "40-49"
+            elseif lvl >= 30 then groupName = "30-39"
+            elseif lvl >= 20 then groupName = "20-29"
+            elseif lvl >= 10 then groupName = "10-19"
+            else groupName = "1-9"
+            end
+        elseif groupBy == "zone" then
+            if member.area == playerZone and playerZone ~= "" then
+                groupName = "Same Zone: " .. playerZone
+            else
+                groupName = member.area ~= "" and member.area or "Unknown"
+            end
+        else
+            groupName = "Other"
+        end
+
+        if not groups[groupName] then
+            groups[groupName] = {}
+            groupSet[groupName] = true
+        end
+        table.insert(groups[groupName], member)
+    end
+
+    -- Build sorted order
+    local order = {}
+    for name in pairs(groupSet) do
+        table.insert(order, name)
+    end
+
+    if groupBy == "rank" then
+        -- Sort by rank index (lowest = highest rank)
+        table.sort(order, function(a, b)
+            local ai = groups[a][1] and groups[a][1].rankIndex or 99
+            local bi = groups[b][1] and groups[b][1].rankIndex or 99
+            return ai < bi
+        end)
+    elseif groupBy == "level" then
+        -- Sort high level brackets first
+        table.sort(order, function(a, b) return a > b end)
+    elseif groupBy == "zone" then
+        -- Same zone first
+        table.sort(order, function(a, b)
+            local aIsLocal = a:find("^Same Zone")
+            local bIsLocal = b:find("^Same Zone")
+            if aIsLocal and not bIsLocal then return true end
+            if bIsLocal and not aIsLocal then return false end
+            return a < b
+        end)
+    else
+        table.sort(order)
+    end
+
+    return groups, order
 end
 
 ---------------------------------------------------------------------------
@@ -630,6 +750,12 @@ function GuildBroker:ExecuteAction(action, member)
             end
             ChatFrame1EditBox:Insert(name)
         end
+
+    elseif action == "openguild" then
+        ToggleGuildFrame()
+
+    elseif action == "openfriends" then
+        ToggleFriendsFrame()
     end
 
     -- Hide tooltip after action (except whisper which returns early)

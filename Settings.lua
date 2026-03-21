@@ -15,63 +15,11 @@ function DGF:SetupOptions()
                 name = "General",
                 order = 1,
                 args = {
-                    headerDisplay = {
-                        type = "header",
-                        name = "Display Settings",
-                        order = 1,
-                    },
-                    labelFormat = {
-                        type = "input",
-                        name = "Panel Text Format",
-                        desc = "Text shown in the LDB display panel.\n\nAvailable tokens:\n  <online> - Online friends count\n  <total> - Total friends count\n  <offline> - Offline friends count",
-                        width = "full",
-                        order = 2,
-                        get = function() return self.db.profile.friends.labelFormat end,
-                        set = function(_, val)
-                            self.db.profile.friends.labelFormat = val
-                            if ns.FriendsBroker then
-                                ns.FriendsBroker:UpdateData()
-                            end
-                        end,
-                    },
-                    tooltipScale = {
-                        type = "range",
-                        name = "Tooltip Scale",
-                        desc = "Scale of the friends tooltip",
-                        min = 0.5, max = 2.0, step = 0.05,
-                        order = 3,
-                        get = function() return self.db.profile.friends.tooltipScale end,
-                        set = function(_, val)
-                            self.db.profile.friends.tooltipScale = val
-                        end,
-                    },
-                    tooltipWidth = {
-                        type = "range",
-                        name = "Tooltip Width",
-                        desc = "Width of the friends tooltip in pixels",
-                        min = 300, max = 800, step = 10,
-                        order = 4,
-                        get = function() return self.db.profile.friends.tooltipWidth end,
-                        set = function(_, val)
-                            self.db.profile.friends.tooltipWidth = val
-                        end,
-                    },
-                    rowSpacing = {
-                        type = "range",
-                        name = "Row Spacing",
-                        desc = "Vertical spacing between friend entries in pixels",
-                        min = 0, max = 16, step = 1,
-                        order = 5,
-                        get = function() return self.db.profile.friends.rowSpacing end,
-                        set = function(_, val)
-                            self.db.profile.friends.rowSpacing = val
-                        end,
-                    },
                     minimapIcon = {
                         type = "toggle",
                         name = "Show Minimap Icon",
                         desc = "Show or hide the minimap button",
-                        order = 4,
+                        order = 1,
                         get = function() return not self.db.profile.minimap.hide end,
                         set = function(_, val)
                             self.db.profile.minimap.hide = not val
@@ -82,6 +30,128 @@ function DGF:SetupOptions()
                                     ns.icon:Hide("DGF-Friends")
                                 end
                             end
+                        end,
+                    },
+                    -- Friends display settings
+                    headerFriendsDisplay = {
+                        type = "header",
+                        name = "Friends Tooltip",
+                        order = 10,
+                    },
+                    friendsLabelFormat = {
+                        type = "input",
+                        name = "Friends Panel Text",
+                        desc = "Text shown on the LDB panel for friends.\n\nAvailable tokens:\n  <online> - Online count\n  <total> - Total count\n  <offline> - Offline count",
+                        width = "full",
+                        order = 11,
+                        get = function() return self.db.profile.friends.labelFormat end,
+                        set = function(_, val)
+                            self.db.profile.friends.labelFormat = val
+                            if ns.FriendsBroker then ns.FriendsBroker:UpdateData() end
+                        end,
+                    },
+                    friendsTooltipScale = {
+                        type = "range",
+                        name = "Scale",
+                        desc = "Scale of the friends tooltip",
+                        min = 0.5, max = 2.0, step = 0.05,
+                        order = 12,
+                        get = function() return self.db.profile.friends.tooltipScale end,
+                        set = function(_, val)
+                            self.db.profile.friends.tooltipScale = val
+                        end,
+                    },
+                    friendsTooltipWidth = {
+                        type = "range",
+                        name = "Width",
+                        desc = "Width of the friends tooltip in pixels",
+                        min = 300, max = 800, step = 10,
+                        order = 13,
+                        get = function() return self.db.profile.friends.tooltipWidth end,
+                        set = function(_, val)
+                            self.db.profile.friends.tooltipWidth = val
+                        end,
+                    },
+                    friendsRowSpacing = {
+                        type = "range",
+                        name = "Row Spacing",
+                        desc = "Vertical spacing between friend entries in pixels",
+                        min = 0, max = 16, step = 1,
+                        order = 14,
+                        get = function() return self.db.profile.friends.rowSpacing end,
+                        set = function(_, val)
+                            self.db.profile.friends.rowSpacing = val
+                        end,
+                    },
+                    copyToFriends = {
+                        type = "execute",
+                        name = "Copy from Guild",
+                        desc = "Apply the guild tooltip scale, width, row spacing, class colors, and sort order to the friends tooltip",
+                        order = 15,
+                        func = function()
+                            DGF:CopyDisplaySettings("guild", "friends")
+                            if ns.FriendsBroker then ns.FriendsBroker:UpdateData() end
+                        end,
+                    },
+                    -- Guild display settings
+                    headerGuildDisplay = {
+                        type = "header",
+                        name = "Guild Tooltip",
+                        order = 20,
+                    },
+                    guildLabelFormat = {
+                        type = "input",
+                        name = "Guild Panel Text",
+                        desc = "Text shown on the LDB panel for guild.\n\nAvailable tokens:\n  <online> - Online count\n  <total> - Total count\n  <offline> - Offline count\n  <guildname> - Guild name",
+                        width = "full",
+                        order = 21,
+                        get = function() return self.db.profile.guild.labelFormat end,
+                        set = function(_, val)
+                            self.db.profile.guild.labelFormat = val
+                            if ns.GuildBroker then ns.GuildBroker:UpdateData() end
+                        end,
+                    },
+                    guildTooltipScale = {
+                        type = "range",
+                        name = "Scale",
+                        desc = "Scale of the guild tooltip",
+                        min = 0.5, max = 2.0, step = 0.05,
+                        order = 22,
+                        get = function() return self.db.profile.guild.tooltipScale end,
+                        set = function(_, val)
+                            self.db.profile.guild.tooltipScale = val
+                        end,
+                    },
+                    guildTooltipWidth = {
+                        type = "range",
+                        name = "Width",
+                        desc = "Width of the guild tooltip in pixels",
+                        min = 300, max = 800, step = 10,
+                        order = 23,
+                        get = function() return self.db.profile.guild.tooltipWidth end,
+                        set = function(_, val)
+                            self.db.profile.guild.tooltipWidth = val
+                        end,
+                    },
+                    guildRowSpacing = {
+                        type = "range",
+                        name = "Row Spacing",
+                        desc = "Vertical spacing between guild member entries in pixels",
+                        min = 0, max = 16, step = 1,
+                        order = 24,
+                        get = function() return self.db.profile.guild.rowSpacing end,
+                        set = function(_, val)
+                            self.db.profile.guild.rowSpacing = val
+                        end,
+                    },
+                    copyToGuild = {
+                        type = "execute",
+                        name = "Copy from Friends",
+                        desc = "Apply the friends tooltip scale, width, row spacing, class colors, and sort order to the guild tooltip",
+                        order = 25,
+                        func = function()
+                            DGF:CopyDisplaySettings("friends", "guild")
+                            if ns.GuildBroker then ns.GuildBroker:UpdateData() end
                         end,
                     },
                 },
@@ -126,6 +196,23 @@ function DGF:SetupOptions()
                         get = function() return self.db.profile.friends.classColorNames end,
                         set = function(_, val)
                             self.db.profile.friends.classColorNames = val
+                            if ns.FriendsBroker then ns.FriendsBroker:UpdateData() end
+                        end,
+                    },
+                    headerGroup = {
+                        type = "header",
+                        name = "Grouping",
+                        order = 8,
+                    },
+                    groupBy = {
+                        type = "select",
+                        name = "Group By",
+                        desc = "How to group friends in the tooltip",
+                        order = 9,
+                        values = ns.FRIENDS_GROUP_VALUES,
+                        get = function() return self.db.profile.friends.groupBy end,
+                        set = function(_, val)
+                            self.db.profile.friends.groupBy = val
                             if ns.FriendsBroker then ns.FriendsBroker:UpdateData() end
                         end,
                     },
@@ -220,82 +307,49 @@ function DGF:SetupOptions()
                 name = "Guild",
                 order = 3,
                 args = {
-                    headerDisplay = {
-                        type = "header",
-                        name = "Display Settings",
-                        order = 1,
-                    },
-                    labelFormat = {
-                        type = "input",
-                        name = "Panel Text Format",
-                        desc = "Text shown in the LDB display panel.\n\nAvailable tokens:\n  <online> - Online members count\n  <total> - Total members count\n  <offline> - Offline members count",
-                        width = "full",
-                        order = 2,
-                        get = function() return self.db.profile.guild.labelFormat end,
-                        set = function(_, val)
-                            self.db.profile.guild.labelFormat = val
-                            if ns.GuildBroker then ns.GuildBroker:UpdateData() end
-                        end,
-                    },
-                    tooltipScale = {
-                        type = "range",
-                        name = "Tooltip Scale",
-                        desc = "Scale of the guild tooltip",
-                        min = 0.5, max = 2.0, step = 0.05,
-                        order = 3,
-                        get = function() return self.db.profile.guild.tooltipScale end,
-                        set = function(_, val)
-                            self.db.profile.guild.tooltipScale = val
-                        end,
-                    },
-                    tooltipWidth = {
-                        type = "range",
-                        name = "Tooltip Width",
-                        desc = "Width of the guild tooltip in pixels",
-                        min = 300, max = 800, step = 10,
-                        order = 4,
-                        get = function() return self.db.profile.guild.tooltipWidth end,
-                        set = function(_, val)
-                            self.db.profile.guild.tooltipWidth = val
-                        end,
-                    },
-                    rowSpacing = {
-                        type = "range",
-                        name = "Row Spacing",
-                        desc = "Vertical spacing between member entries in pixels",
-                        min = 0, max = 16, step = 1,
-                        order = 5,
-                        get = function() return self.db.profile.guild.rowSpacing end,
-                        set = function(_, val)
-                            self.db.profile.guild.rowSpacing = val
-                        end,
-                    },
                     headerFilter = {
                         type = "header",
                         name = "Display Options",
-                        order = 10,
+                        order = 1,
                     },
                     classColorNames = {
                         type = "toggle",
                         name = "Class-Colored Names",
                         desc = "Color guild member names by their class color",
-                        order = 11,
+                        order = 2,
                         get = function() return self.db.profile.guild.classColorNames end,
                         set = function(_, val)
                             self.db.profile.guild.classColorNames = val
                             if ns.GuildBroker then ns.GuildBroker:UpdateData() end
                         end,
                     },
+                    headerGroup = {
+                        type = "header",
+                        name = "Grouping",
+                        order = 8,
+                    },
+                    groupBy = {
+                        type = "select",
+                        name = "Group By",
+                        desc = "How to group guild members in the tooltip",
+                        order = 9,
+                        values = ns.GUILD_GROUP_VALUES,
+                        get = function() return self.db.profile.guild.groupBy end,
+                        set = function(_, val)
+                            self.db.profile.guild.groupBy = val
+                            if ns.GuildBroker then ns.GuildBroker:UpdateData() end
+                        end,
+                    },
                     headerSort = {
                         type = "header",
                         name = "Sorting",
-                        order = 20,
+                        order = 10,
                     },
                     sortBy = {
                         type = "select",
                         name = "Sort By",
                         desc = "How to sort the guild list in the tooltip",
-                        order = 21,
+                        order = 11,
                         values = {
                             name   = "Name",
                             class  = "Class",
@@ -314,7 +368,7 @@ function DGF:SetupOptions()
                         type = "toggle",
                         name = "Ascending Order",
                         desc = "Sort in ascending (A-Z, low-high) or descending order",
-                        order = 22,
+                        order = 12,
                         get = function() return self.db.profile.guild.sortAscending end,
                         set = function(_, val)
                             self.db.profile.guild.sortAscending = val
@@ -324,17 +378,17 @@ function DGF:SetupOptions()
                     headerClick = {
                         type = "header",
                         name = "Click Actions",
-                        order = 30,
+                        order = 20,
                     },
                     clickDesc = {
                         type = "description",
                         name = "Configure what happens when you click on a guild member in the tooltip.",
-                        order = 31,
+                        order = 21,
                     },
                     leftClick = {
                         type = "select",
                         name = "Left Click",
-                        order = 32,
+                        order = 22,
                         values = ns.ACTION_VALUES,
                         get = function() return self.db.profile.guild.clickActions.leftClick end,
                         set = function(_, val) self.db.profile.guild.clickActions.leftClick = val end,
@@ -342,7 +396,7 @@ function DGF:SetupOptions()
                     rightClick = {
                         type = "select",
                         name = "Right Click",
-                        order = 33,
+                        order = 23,
                         values = ns.ACTION_VALUES,
                         get = function() return self.db.profile.guild.clickActions.rightClick end,
                         set = function(_, val) self.db.profile.guild.clickActions.rightClick = val end,
@@ -350,7 +404,7 @@ function DGF:SetupOptions()
                     shiftLeftClick = {
                         type = "select",
                         name = "Shift + Left Click",
-                        order = 34,
+                        order = 24,
                         values = ns.ACTION_VALUES,
                         get = function() return self.db.profile.guild.clickActions.shiftLeftClick end,
                         set = function(_, val) self.db.profile.guild.clickActions.shiftLeftClick = val end,
@@ -358,7 +412,7 @@ function DGF:SetupOptions()
                     shiftRightClick = {
                         type = "select",
                         name = "Shift + Right Click",
-                        order = 35,
+                        order = 25,
                         values = ns.ACTION_VALUES,
                         get = function() return self.db.profile.guild.clickActions.shiftRightClick end,
                         set = function(_, val) self.db.profile.guild.clickActions.shiftRightClick = val end,
@@ -366,7 +420,7 @@ function DGF:SetupOptions()
                     middleClick = {
                         type = "select",
                         name = "Middle Click",
-                        order = 36,
+                        order = 26,
                         values = ns.ACTION_VALUES,
                         get = function() return self.db.profile.guild.clickActions.middleClick end,
                         set = function(_, val) self.db.profile.guild.clickActions.middleClick = val end,
