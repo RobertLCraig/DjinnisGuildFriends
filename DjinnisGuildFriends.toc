@@ -20,3 +20,6 @@ FriendsBroker.lua
 GuildBroker.lua
 CommunitiesBroker.lua
 Settings.lua
+
+# Screenshot/demo mode — uncomment to inject fake data, comment out for live use:
+# DemoMode.lua
