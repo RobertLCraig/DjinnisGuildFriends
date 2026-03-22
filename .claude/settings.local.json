@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find 'C:/Games/World of Warcraft/_retail_/Interface/AddOns/' -type d -name AceAddon*)",
+      "Bash(find 'C:/Games/World of Warcraft/_retail_/Interface/AddOns/' -type d -name LibDataBroker*)",
+      "Bash(SRC=\"c:/Games/World of Warcraft/_retail_/Interface/AddOns/AccWideUILayoutSelection/Libs\")",
+      "Bash(DST=\"c:/Games/World of Warcraft/_retail_/Interface/AddOns/DjinnisGuildFriends/Libs\")",
+      "Bash(mkdir -p \"$DST\")",
+      "Bash(for lib:*)",
+      "Bash(do)"
+    ]
+  }
+}
