@@ -112,9 +112,9 @@ All click actions are configurable per broker. Available actions:
 
 All libraries are **embedded** — no separate addon installs required:
 
-- LibStub
-- CallbackHandler-1.0
-- LibDataBroker-1.1
+- [LibStub](https://github.com/WoWUIDev/LibStub) — Public Domain
+- [CallbackHandler-1.0](https://github.com/WoWUIDev/Ace3/tree/master/CallbackHandler-1.0) — Ace3 BSD License (see `Libs/CallbackHandler-1.0/LICENSE.txt`)
+- [LibDataBroker-1.1](https://github.com/tekkub/libdatabroker-1-1) — No license specified
 
 **Optional**: An LDB display addon to show the broker panels (ElvUI, TitanPanel, EQOL Datapanels, FuBar, etc.)
 
