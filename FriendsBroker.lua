@@ -6,10 +6,9 @@ local LDB = LibStub("LibDataBroker-1.1")
 -- Module setup
 ---------------------------------------------------------------------------
 
-local FriendsBroker = DGF:NewModule("FriendsBroker", "AceEvent-3.0")
+local FriendsBroker = {}
 ns.FriendsBroker = FriendsBroker
 
--- Friends data cache
 FriendsBroker.friendsCache = {}
 FriendsBroker.onlineCount = 0
 FriendsBroker.totalCount = 0
@@ -21,18 +20,14 @@ local ROW_HEIGHT = 16
 local TOOLTIP_PADDING = 10
 local HEADER_HEIGHT = 24
 
--- Status icons/text
 local STATUS_STRINGS = {
     afk = "|cffffcc00[AFK]|r ",
     dnd = "|cffff0000[DND]|r ",
 }
 
--- BNet client constant
 local BNET_CLIENT_WOW = "WoW"
 
 -- Build localized class name -> token lookup table
--- The WoW API only returns localized class names (e.g., "Paladin"), not tokens ("PALADIN")
--- We need this map to resolve class colors from localized names
 local localizedClassMap = {}
 if LOCALIZED_CLASS_NAMES_MALE then
     for token, name in pairs(LOCALIZED_CLASS_NAMES_MALE) do
@@ -51,28 +46,21 @@ end
 
 --- Resolve a class token from whatever fields are available
 local function ResolveClassToken(classToken, classID, localizedName)
-    -- Direct token field (if present)
     if type(classToken) == "string" and classToken ~= "" then
         local token = classToken:upper()
         if RAID_CLASS_COLORS[token] then return token end
-        -- Maybe it's a localized name in the token field
         if localizedClassMap[classToken] then return localizedClassMap[classToken] end
     end
-
-    -- By classID via C_CreatureInfo
     if classID and C_CreatureInfo and C_CreatureInfo.GetClassInfo then
         local info = C_CreatureInfo.GetClassInfo(classID)
         if info and info.classFile and RAID_CLASS_COLORS[info.classFile] then
             return info.classFile
         end
     end
-
-    -- By localized name
     if type(localizedName) == "string" and localizedName ~= "" then
         local token = localizedClassMap[localizedName]
         if token then return token end
     end
-
     return nil
 end
 
@@ -93,7 +81,6 @@ local dataobj = LDB:NewDataObject("DGF-Friends", {
     end,
     OnClick = function(self, button)
         if button == "LeftButton" and IsShiftKeyDown() then
-            -- Toggle friends panel
             ToggleFriendsFrame()
         end
     end,
@@ -102,27 +89,29 @@ local dataobj = LDB:NewDataObject("DGF-Friends", {
 FriendsBroker.dataobj = dataobj
 
 ---------------------------------------------------------------------------
--- Module lifecycle
+-- Event handling
 ---------------------------------------------------------------------------
 
-function FriendsBroker:OnEnable()
-    self:RegisterEvent("FRIENDLIST_UPDATE", "OnFriendsUpdate")
-    self:RegisterEvent("BN_FRIEND_INFO_CHANGED", "OnFriendsUpdate")
-    self:RegisterEvent("BN_FRIEND_LIST_SIZE_CHANGED", "OnFriendsUpdate")
-    self:RegisterEvent("BN_CONNECTED", "OnFriendsUpdate")
-    self:RegisterEvent("BN_DISCONNECTED", "OnFriendsUpdate")
-    self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
+local eventFrame = CreateFrame("Frame")
 
-    -- Register minimap icon
-    if ns.icon and dataobj then
-        ns.icon:Register("DGF-Friends", dataobj, DGF.db.profile.minimap)
-    end
+function FriendsBroker:Init()
+    eventFrame:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_ENTERING_WORLD" then
+            FriendsBroker:OnPlayerEnteringWorld()
+        else
+            FriendsBroker:OnFriendsUpdate()
+        end
+    end)
+    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    eventFrame:RegisterEvent("FRIENDLIST_UPDATE")
+    eventFrame:RegisterEvent("BN_FRIEND_INFO_CHANGED")
+    eventFrame:RegisterEvent("BN_FRIEND_LIST_SIZE_CHANGED")
+    eventFrame:RegisterEvent("BN_CONNECTED")
+    eventFrame:RegisterEvent("BN_DISCONNECTED")
 end
 
 function FriendsBroker:OnPlayerEnteringWorld()
-    -- Request friends data from server
     C_FriendList.ShowFriends()
-    -- Small delay then update, since data may not be immediately available
     C_Timer.After(2, function()
         self:UpdateData()
     end)
@@ -137,7 +126,7 @@ end
 ---------------------------------------------------------------------------
 
 function FriendsBroker:UpdateData()
-    local db = DGF.db.profile.friends
+    local db = ns.db.friends
     local friends = {}
 
     -- WoW Character Friends
@@ -150,20 +139,18 @@ function FriendsBroker:UpdateData()
                 local localizedName = info.className or info.classLocalized or info.class or ""
                 local classToken = ResolveClassToken(rawToken, info.classID, localizedName)
 
-                local entry = {
-                    name       = info.name or "Unknown",
-                    level      = info.level or 0,
-                    classFile  = classToken,
-                    className  = localizedName,
-                    area       = info.area or "",
-                    connected  = info.connected,
-                    afk        = info.afk,
-                    dnd        = info.dnd,
-                    notes      = info.notes or "",
-                    isBNet     = false,
-                    fullName   = info.name,
-                }
-                table.insert(friends, entry)
+                table.insert(friends, {
+                    name      = info.name or "Unknown",
+                    level     = info.level or 0,
+                    classFile = classToken,
+                    area      = info.area or "",
+                    connected = info.connected,
+                    afk       = info.afk,
+                    dnd       = info.dnd,
+                    notes     = info.notes or "",
+                    isBNet    = false,
+                    fullName  = info.name,
+                })
             end
         end
     end
@@ -179,45 +166,33 @@ function FriendsBroker:UpdateData()
                 local isOnline = gameInfo and gameInfo.isOnline
 
                 if isWoW and isOnline then
-                    -- Check for multiple game accounts
                     local numGameAccounts = C_BattleNet.GetFriendNumGameAccounts(i)
                     if numGameAccounts and numGameAccounts > 1 then
                         for j = 1, numGameAccounts do
                             local gameAccountInfo = C_BattleNet.GetFriendGameAccountInfo(i, j)
                             if gameAccountInfo and gameAccountInfo.clientProgram == BNET_CLIENT_WOW and gameAccountInfo.isOnline then
-                                local entry = self:BuildBNetEntry(accountInfo, gameAccountInfo)
-                                table.insert(friends, entry)
+                                table.insert(friends, self:BuildBNetEntry(accountInfo, gameAccountInfo))
                             end
                         end
                     else
-                        local entry = self:BuildBNetEntry(accountInfo, gameInfo)
-                        table.insert(friends, entry)
+                        table.insert(friends, self:BuildBNetEntry(accountInfo, gameInfo))
                     end
                 end
             end
         end
     end
 
-    -- Sort
     self:SortFriends(friends)
-
-    -- Update cache
     self.friendsCache = friends
 
-    -- Count online/total
     local wowOnline = C_FriendList.GetNumOnlineFriends() or 0
     local wowTotal = C_FriendList.GetNumFriends() or 0
     local bnTotal, bnOnline = BNGetNumFriends()
-    bnTotal = bnTotal or 0
-    bnOnline = bnOnline or 0
+    self.onlineCount = wowOnline + (bnOnline or 0)
+    self.totalCount = wowTotal + (bnTotal or 0)
 
-    self.onlineCount = wowOnline + bnOnline
-    self.totalCount = wowTotal + bnTotal
-
-    -- Update LDB text
     dataobj.text = DGF:FormatLabel(db.labelFormat, self.onlineCount, self.totalCount)
 
-    -- Refresh tooltip if visible
     if tooltipFrame and tooltipFrame:IsShown() then
         self:PopulateTooltip()
     end
@@ -228,7 +203,6 @@ function FriendsBroker:BuildBNetEntry(accountInfo, gameInfo)
     local className = gameInfo.className or gameInfo.classLocalized or gameInfo.class or ""
     local classToken = ResolveClassToken(rawToken, gameInfo.classID, className)
 
-    -- Build the full character-realm name for actions
     local charName = gameInfo.characterName or ""
     local realmName = gameInfo.realmDisplayName or gameInfo.realmName or ""
     local fullName = ""
@@ -242,7 +216,6 @@ function FriendsBroker:BuildBNetEntry(accountInfo, gameInfo)
         name          = charName ~= "" and charName or accountInfo.accountName or "Unknown",
         level         = gameInfo.characterLevel or 0,
         classFile     = classToken,
-        className     = className,
         area          = gameInfo.areaName or "",
         connected     = true,
         afk           = accountInfo.isAFK or (gameInfo.isGameAFK == true) or false,
@@ -264,8 +237,10 @@ end
 local SORT_FUNCTIONS = {
     name = function(a, b) return a.name < b.name end,
     class = function(a, b)
-        if a.className == b.className then return a.name < b.name end
-        return a.className < b.className
+        local ac = a.classFile or ""
+        local bc = b.classFile or ""
+        if ac == bc then return a.name < b.name end
+        return ac < bc
     end,
     level = function(a, b)
         if a.level == b.level then return a.name < b.name end
@@ -284,7 +259,7 @@ local SORT_FUNCTIONS = {
 }
 
 function FriendsBroker:SortFriends(friends)
-    local db = DGF.db.profile.friends
+    local db = ns.db.friends
     local sortFunc = SORT_FUNCTIONS[db.sortBy] or SORT_FUNCTIONS.name
     local ascending = db.sortAscending
 
@@ -319,14 +294,12 @@ local function CreateTooltipFrame()
     f:SetBackdropColor(0.05, 0.05, 0.05, 0.92)
     f:SetBackdropBorderColor(0.6, 0.6, 0.6, 0.8)
 
-    -- Header
     f.header = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     f.header:SetPoint("TOPLEFT", f, "TOPLEFT", TOOLTIP_PADDING, -TOOLTIP_PADDING)
     f.header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -TOOLTIP_PADDING, -TOOLTIP_PADDING)
     f.header:SetJustifyH("LEFT")
     f.header:SetHeight(HEADER_HEIGHT)
 
-    -- Column headers (widths set dynamically in UpdateTooltipLayout)
     f.colName = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     f.colName:SetPoint("TOPLEFT", f.header, "BOTTOMLEFT", 0, -4)
     f.colName:SetText("|cffaaaaaaName|r")
@@ -349,13 +322,11 @@ local function CreateTooltipFrame()
     f.colNote:SetText("|cffaaaaaaNotes|r")
     f.colNote:SetJustifyH("LEFT")
 
-    -- Hint text at bottom
     f.hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     f.hint:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", TOOLTIP_PADDING, TOOLTIP_PADDING)
     f.hint:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -TOOLTIP_PADDING, TOOLTIP_PADDING)
     f.hint:SetJustifyH("LEFT")
 
-    -- Mouse enter/leave for tooltip persistence
     f:SetScript("OnEnter", function()
         FriendsBroker:CancelTooltipHideTimer()
     end)
@@ -367,30 +338,25 @@ local function CreateTooltipFrame()
     return f
 end
 
---- Update tooltip and row widths based on configured width
 local function UpdateTooltipLayout(tooltipWidth)
     if not tooltipFrame then return end
 
     local innerWidth = tooltipWidth - 2 * TOOLTIP_PADDING
-    -- Column proportions: Name 30%, Lvl fixed 30px, Zone 28%, Notes remainder
     local nameW = math.floor(innerWidth * 0.30)
     local levelW = 30
     local zoneW = math.floor(innerWidth * 0.28)
-    local noteW = innerWidth - nameW - levelW - zoneW - 12 -- 12 = 3 gaps of 4px
+    local noteW = innerWidth - nameW - levelW - zoneW - 12
 
     tooltipFrame:SetWidth(tooltipWidth)
     tooltipFrame.colName:SetWidth(nameW)
     tooltipFrame.colZone:SetWidth(zoneW)
 
-    -- Update all existing rows
     for _, row in pairs(rowPool) do
         row:SetWidth(innerWidth)
         row.nameText:SetWidth(nameW)
         row.zoneText:SetWidth(zoneW)
         row.noteText:SetWidth(noteW)
     end
-
-    return nameW, levelW, zoneW, noteW
 end
 
 local function GetOrCreateRow(parent, index)
@@ -400,49 +366,41 @@ local function GetOrCreateRow(parent, index)
     end
 
     local row = CreateFrame("Button", nil, parent)
-    row:SetSize(360, ROW_HEIGHT) -- width updated by UpdateTooltipLayout
+    row:SetSize(360, ROW_HEIGHT)
     row:EnableMouse(true)
     row:RegisterForClicks("AnyUp")
 
-    -- Highlight texture
     row.highlight = row:CreateTexture(nil, "HIGHLIGHT")
     row.highlight:SetAllPoints()
     row.highlight:SetColorTexture(1, 1, 1, 0.1)
 
-    -- Status + Name
     row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     row.nameText:SetPoint("LEFT", row, "LEFT", 0, 0)
     row.nameText:SetWidth(130)
     row.nameText:SetJustifyH("LEFT")
 
-    -- Level
     row.levelText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     row.levelText:SetPoint("LEFT", row.nameText, "RIGHT", 4, 0)
     row.levelText:SetWidth(30)
     row.levelText:SetJustifyH("CENTER")
 
-    -- Zone
     row.zoneText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     row.zoneText:SetPoint("LEFT", row.levelText, "RIGHT", 4, 0)
     row.zoneText:SetWidth(130)
     row.zoneText:SetJustifyH("LEFT")
 
-    -- Note
     row.noteText = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     row.noteText:SetPoint("LEFT", row.zoneText, "RIGHT", 4, 0)
     row.noteText:SetPoint("RIGHT", row, "RIGHT", 0, 0)
     row.noteText:SetJustifyH("LEFT")
     row.noteText:SetWordWrap(false)
 
-    -- Use OnMouseUp instead of OnClick for more reliable click handling
-    -- OnClick on Button frames can have issues in TOOLTIP strata
     row:SetScript("OnMouseUp", function(self, button)
         FriendsBroker:OnRowClick(self, button)
     end)
 
     row:SetScript("OnEnter", function(self)
         FriendsBroker:CancelTooltipHideTimer()
-        -- Show full note in a GameTooltip on hover
         if self.friendData and self.friendData.notes and self.friendData.notes ~= "" then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:AddLine(self.friendData.notes, 1, 1, 1, true)
@@ -469,21 +427,12 @@ function FriendsBroker:ShowTooltip(anchor)
     end
 
     self:CancelTooltipHideTimer()
-
-    -- Update data first
     self:UpdateData()
 
-    -- Anchor
     tooltipFrame:ClearAllPoints()
-    tooltipFrame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
-
-    -- Scale
-    local scale = DGF.db.profile.friends.tooltipScale or 1.0
-    tooltipFrame:SetScale(scale)
-
-    -- Apply configurable width
-    local tooltipWidth = DGF.db.profile.friends.tooltipWidth or 420
-    UpdateTooltipLayout(tooltipWidth)
+    tooltipFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, 4)
+    tooltipFrame:SetScale(ns.db.friends.tooltipScale or 1.0)
+    UpdateTooltipLayout(ns.db.friends.tooltipWidth or 420)
 
     self:PopulateTooltip()
     tooltipFrame:Show()
@@ -492,18 +441,15 @@ end
 function FriendsBroker:PopulateTooltip()
     if not tooltipFrame then return end
 
-    local friends = self.friendsCache
-    local db = DGF.db.profile.friends
+    local db = ns.db.friends
     local useClassColors = db.classColorNames
 
-    -- Header
     tooltipFrame.header:SetText(
         DGF:ColorText("Friends Online: ", 1, 0.82, 0) ..
         DGF:ColorText(tostring(self.onlineCount), 0, 1, 0) ..
         DGF:ColorText(" / " .. tostring(self.totalCount), 0.63, 0.63, 0.63)
     )
 
-    -- Build hint text from click action config
     local hints = {}
     if db.clickActions.leftClick ~= "none" then
         table.insert(hints, "LClick: " .. (ns.ACTION_VALUES[db.clickActions.leftClick] or ""))
@@ -516,7 +462,6 @@ function FriendsBroker:PopulateTooltip()
     end
     tooltipFrame.hint:SetText("|cff888888" .. table.concat(hints, "  |  ") .. "|r")
 
-    -- Hide all existing rows and group headers
     for _, row in pairs(rowPool) do
         row:Hide()
     end
@@ -526,9 +471,8 @@ function FriendsBroker:PopulateTooltip()
         end
     end
 
-    -- Populate rows with online friends only
     local onlineFriends = {}
-    for _, f in ipairs(friends) do
+    for _, f in ipairs(self.friendsCache) do
         if f.connected then
             table.insert(onlineFriends, f)
         end
@@ -537,11 +481,9 @@ function FriendsBroker:PopulateTooltip()
     local rowSpacing = db.rowSpacing or 4
     local rowStep = ROW_HEIGHT + rowSpacing
     local groupBy = db.groupBy or "none"
-
-    -- Build groups
     local groups, groupOrder = self:BuildGroups(onlineFriends, groupBy)
 
-    local yOffset = -(TOOLTIP_PADDING + HEADER_HEIGHT + 20) -- after header + column headers
+    local yOffset = -(TOOLTIP_PADDING + HEADER_HEIGHT + 20)
     local rowIdx = 0
 
     local function RenderFriend(friend)
@@ -551,7 +493,6 @@ function FriendsBroker:PopulateTooltip()
         row:SetPoint("TOPLEFT", tooltipFrame, "TOPLEFT", TOOLTIP_PADDING, yOffset)
         row.friendData = friend
 
-        -- Status prefix
         local status = ""
         if friend.afk then
             status = STATUS_STRINGS.afk
@@ -559,13 +500,11 @@ function FriendsBroker:PopulateTooltip()
             status = STATUS_STRINGS.dnd
         end
 
-        -- Build display name
         local displayName = friend.name
         if friend.isBNet and friend.accountName then
             displayName = displayName .. " |cff82c5ff(" .. friend.accountName .. ")|r"
         end
 
-        -- Apply class coloring if enabled
         if useClassColors and friend.classFile then
             row.nameText:SetText(status .. DGF:ClassColorText(displayName, friend.classFile))
         else
@@ -574,8 +513,6 @@ function FriendsBroker:PopulateTooltip()
 
         row.levelText:SetText(friend.level > 0 and tostring(friend.level) or "")
         row.zoneText:SetText(DGF:ColorText(friend.area, 0.63, 0.82, 1))
-
-        -- Show note text (no hard truncation — FontString handles overflow via width)
         row.noteText:SetText(friend.notes or "")
 
         yOffset = yOffset - rowStep
@@ -589,7 +526,6 @@ function FriendsBroker:PopulateTooltip()
         for _, groupName in ipairs(groupOrder) do
             local groupMembers = groups[groupName]
             if groupMembers and #groupMembers > 0 then
-                -- Group header
                 yOffset = yOffset - 4
                 local hdr = self:GetOrCreateGroupHeader(tooltipFrame, groupName)
                 hdr:ClearAllPoints()
@@ -598,7 +534,6 @@ function FriendsBroker:PopulateTooltip()
                 hdr:Show()
                 yOffset = yOffset - 16
 
-                -- Check collapsed state
                 if not db.groupCollapsed[groupName] then
                     for _, friend in ipairs(groupMembers) do
                         RenderFriend(friend)
@@ -608,7 +543,6 @@ function FriendsBroker:PopulateTooltip()
         end
     end
 
-    -- Empty state
     if #onlineFriends == 0 then
         rowIdx = rowIdx + 1
         local row = GetOrCreateRow(tooltipFrame, rowIdx)
@@ -622,9 +556,7 @@ function FriendsBroker:PopulateTooltip()
         yOffset = yOffset - rowStep
     end
 
-    -- Size the tooltip
-    local totalHeight = math.abs(yOffset) + TOOLTIP_PADDING + 20 -- bottom padding + hint
-    tooltipFrame:SetHeight(totalHeight)
+    tooltipFrame:SetHeight(math.abs(yOffset) + TOOLTIP_PADDING + 20)
 end
 
 ---------------------------------------------------------------------------
@@ -654,11 +586,7 @@ function FriendsBroker:BuildGroups(friends, groupBy)
         local groupNames = {}
 
         if groupBy == "type" then
-            if friend.isBNet then
-                table.insert(groupNames, "Battle.net Friends")
-            else
-                table.insert(groupNames, "Character Friends")
-            end
+            table.insert(groupNames, friend.isBNet and "Battle.net Friends" or "Character Friends")
         elseif groupBy == "zone" then
             if friend.area == playerZone and playerZone ~= "" then
                 table.insert(groupNames, "Same Zone: " .. playerZone)
@@ -687,30 +615,26 @@ function FriendsBroker:BuildGroups(friends, groupBy)
         end
     end
 
-    -- Build sorted order
     local order = {}
     for name in pairs(groupSet) do
         table.insert(order, name)
     end
 
     if groupBy == "type" then
-        -- BNet first, then character
         table.sort(order, function(a, b)
             if a == "Battle.net Friends" then return true end
             if b == "Battle.net Friends" then return false end
             return a < b
         end)
     elseif groupBy == "zone" then
-        -- Same zone first
         table.sort(order, function(a, b)
-            local aIsLocal = a:find("^Same Zone")
-            local bIsLocal = b:find("^Same Zone")
-            if aIsLocal and not bIsLocal then return true end
-            if bIsLocal and not aIsLocal then return false end
+            local aLocal = a:find("^Same Zone")
+            local bLocal = b:find("^Same Zone")
+            if aLocal and not bLocal then return true end
+            if bLocal and not aLocal then return false end
             return a < b
         end)
     elseif groupBy == "note" then
-        -- Ungrouped last, rest alphabetical
         table.sort(order, function(a, b)
             if a == "Ungrouped" then return false end
             if b == "Ungrouped" then return true end
@@ -724,7 +648,7 @@ function FriendsBroker:BuildGroups(friends, groupBy)
 end
 
 ---------------------------------------------------------------------------
--- Tooltip hide timer (persistence when moving mouse between button/tooltip)
+-- Tooltip hide timer
 ---------------------------------------------------------------------------
 
 FriendsBroker.hideTimer = nil
@@ -732,9 +656,7 @@ FriendsBroker.hideTimer = nil
 function FriendsBroker:StartTooltipHideTimer()
     self:CancelTooltipHideTimer()
     self.hideTimer = C_Timer.NewTimer(0.15, function()
-        if tooltipFrame then
-            tooltipFrame:Hide()
-        end
+        if tooltipFrame then tooltipFrame:Hide() end
         self.hideTimer = nil
     end)
 end
@@ -754,7 +676,7 @@ function FriendsBroker:OnRowClick(row, button)
     local friend = row.friendData
     if not friend then return end
 
-    local db = DGF.db.profile.friends
+    local db = ns.db.friends
     local action
 
     if button == "LeftButton" and IsShiftKeyDown() then
@@ -778,12 +700,9 @@ function FriendsBroker:ExecuteAction(action, friend)
     self:CancelTooltipHideTimer()
 
     if action == "whisper" then
-        -- Hide tooltip first so it doesn't compete for focus
         if tooltipFrame then tooltipFrame:Hide() end
 
         if friend.isBNet then
-            -- BNet whisper: use ChatFrameUtil.SendBNetTell (the modern API)
-            -- ChatFrame_SendBNetTell is deprecated and may not exist
             local tellName = friend.accountName
             if not tellName or tellName == "" then
                 tellName = friend.battleTag and friend.battleTag:match("^([^#]+)") or friend.name
@@ -793,11 +712,9 @@ function FriendsBroker:ExecuteAction(action, friend)
             elseif ChatFrame_SendBNetTell then
                 ChatFrame_SendBNetTell(tellName)
             else
-                -- Last resort: manually open chat with /w
                 ChatFrameUtil.OpenChat("/w " .. tellName .. " ")
             end
         else
-            -- WoW character whisper: use ChatFrameUtil.SendTell (the modern API)
             local name = friend.fullName or friend.name
             if name and name ~= "" then
                 if ChatFrameUtil and ChatFrameUtil.SendTell then
@@ -829,7 +746,6 @@ function FriendsBroker:ExecuteAction(action, friend)
         C_FriendList.SendWho(query)
 
     elseif action == "copyname" then
-        -- Insert "Name-Realm" into the active chat editbox
         local name = friend.name
         local realm = friend.realmName or ""
         if not friend.isBNet and friend.fullName and friend.fullName ~= "" then
@@ -837,7 +753,6 @@ function FriendsBroker:ExecuteAction(action, friend)
         elseif realm ~= "" then
             name = name .. "-" .. realm
         end
-        -- Open chat if not already open, then insert
         if not ChatFrame1EditBox:IsShown() then
             ChatFrameUtil.OpenChat("")
         end
@@ -848,8 +763,10 @@ function FriendsBroker:ExecuteAction(action, friend)
 
     elseif action == "openguild" then
         ToggleGuildFrame()
+
+    elseif action == "opencommunities" then
+        ToggleCommunitiesFrame()
     end
 
-    -- Hide tooltip after action (except whisper which hides before and returns)
     if tooltipFrame then tooltipFrame:Hide() end
 end

@@ -1,85 +1,126 @@
 -- Djinni's Guild & Friends
--- LDB data brokers for friends and guild lists with interactive tooltips.
--- Uses: Ace3 (public domain), LibDataBroker-1.1, LibDBIcon-1.0
+-- LDB data brokers for friends, guild, and communities with interactive tooltips.
+-- Uses: LibDataBroker-1.1
 local addonName, ns = ...
 
-local DGF = LibStub("AceAddon-3.0"):NewAddon(addonName, "AceEvent-3.0", "AceConsole-3.0")
+---------------------------------------------------------------------------
+-- Addon namespace
+---------------------------------------------------------------------------
+
+local DGF = {}
 ns.addon = DGF
 ns.addonName = addonName
 
--- AceDB default profile settings
+-- Saved variables reference (populated in ADDON_LOADED)
+ns.db = nil
+
+-- Default settings (flat structure, no profiles)
 ns.defaults = {
-    profile = {
-        minimap = {
-            hide = false,
+    friends = {
+        labelFormat = "Friends: <online>/<total>",
+        sortBy = "name",
+        sortAscending = true,
+        showBNetFriends = true,
+        showWoWFriends = true,
+        classColorNames = true,
+        tooltipScale = 1.0,
+        tooltipWidth = 420,
+        rowSpacing = 4,
+        groupBy = "none",
+        groupCollapsed = {},
+        clickActions = {
+            leftClick = "whisper",
+            rightClick = "invite",
+            shiftLeftClick = "copyname",
+            shiftRightClick = "who",
+            middleClick = "openfriends",
         },
-        friends = {
-            labelFormat = "Friends: <online>/<total>",
-            sortBy = "name",
-            sortAscending = true,
-            showBNetFriends = true,
-            showWoWFriends = true,
-            classColorNames = true,
-            tooltipScale = 1.0,
-            tooltipWidth = 420,
-            rowSpacing = 4,
-            groupBy = "none",
-            groupCollapsed = {},
-            clickActions = {
-                leftClick = "whisper",
-                rightClick = "invite",
-                shiftLeftClick = "copyname",
-                shiftRightClick = "who",
-                middleClick = "openfriends",
-            },
+    },
+    guild = {
+        labelFormat = "Guild: <online>/<total>",
+        sortBy = "name",
+        sortAscending = true,
+        classColorNames = true,
+        tooltipScale = 1.0,
+        tooltipWidth = 480,
+        rowSpacing = 4,
+        groupBy = "none",
+        groupCollapsed = {},
+        clickActions = {
+            leftClick = "whisper",
+            rightClick = "invite",
+            shiftLeftClick = "copyname",
+            shiftRightClick = "who",
+            middleClick = "openguild",
         },
-        guild = {
-            labelFormat = "Guild: <online>/<total>",
-            sortBy = "name",
-            sortAscending = true,
-            classColorNames = true,
-            tooltipScale = 1.0,
-            tooltipWidth = 480,
-            rowSpacing = 4,
-            groupBy = "none",
-            groupCollapsed = {},
-            clickActions = {
-                leftClick = "whisper",
-                rightClick = "invite",
-                shiftLeftClick = "copyname",
-                shiftRightClick = "who",
-                middleClick = "openguild",
-            },
+    },
+    communities = {
+        labelFormat = "Communities: <online>",
+        sortBy = "name",
+        sortAscending = true,
+        classColorNames = true,
+        tooltipScale = 1.0,
+        tooltipWidth = 480,
+        rowSpacing = 4,
+        disabledClubs = {},
+        clickActions = {
+            leftClick = "whisper",
+            rightClick = "invite",
+            shiftLeftClick = "copyname",
+            shiftRightClick = "who",
+            middleClick = "opencommunities",
         },
     },
 }
 
--- Available click actions for settings dropdowns
+-- Available click actions
 ns.ACTION_VALUES = {
-    whisper     = "Whisper",
-    invite      = "Invite to Group",
-    who         = "/who Lookup",
-    copyname    = "Copy Name to Chat",
-    openfriends = "Open Friends List",
-    openguild   = "Open Guild Roster",
-    none        = "None",
+    whisper         = "Whisper",
+    invite          = "Invite to Group",
+    who             = "/who Lookup",
+    copyname        = "Copy Name to Chat",
+    openfriends     = "Open Friends List",
+    openguild       = "Open Guild Roster",
+    opencommunities = "Open Communities",
+    none            = "None",
 }
 
--- Grouping modes for friends
+-- Grouping modes
 ns.FRIENDS_GROUP_VALUES = {
-    none     = "No Grouping",
-    type     = "BNet / In-Game Friends",
-    zone     = "Same Zone",
-    note     = "Friend Note (#tags)",
+    none = "No Grouping",
+    type = "BNet / In-Game Friends",
+    zone = "Same Zone",
+    note = "Friend Note (#tags)",
 }
 
--- Grouping modes for guild
 ns.GUILD_GROUP_VALUES = {
     none  = "No Grouping",
     rank  = "Guild Rank",
     level = "Level Bracket",
     zone  = "Same Zone",
 }
+
+---------------------------------------------------------------------------
+-- Saved variables helpers
+---------------------------------------------------------------------------
+
+--- Deep-merge defaults into saved vars (only fills missing keys)
+local function MergeDefaults(target, defaults)
+    for k, v in pairs(defaults) do
+        if type(v) == "table" then
+            if type(target[k]) ~= "table" then
+                target[k] = {}
+            end
+            MergeDefaults(target[k], v)
+        elseif target[k] == nil then
+            target[k] = v
+        end
+    end
+end
+
+---------------------------------------------------------------------------
+-- Utility functions
+---------------------------------------------------------------------------
 
 --- Parse #GroupName tags from a note string (FriendGroups-compatible)
 function DGF:ParseNoteGroups(note)
@@ -97,11 +138,7 @@ function DGF:ParseNoteGroups(note)
     return groups
 end
 
----------------------------------------------------------------------------
--- Utility functions
----------------------------------------------------------------------------
-
---- Replace <online>, <total>, <offline>, <guildname> tokens in a format string
+--- Replace <token> placeholders in a format string
 function DGF:FormatLabel(fmt, online, total, extra)
     local offline = total - online
     local result = fmt
@@ -122,7 +159,7 @@ function DGF:GetClassColor(classFile)
         local c = RAID_CLASS_COLORS[classFile]
         return c.r, c.g, c.b
     end
-    return 0.63, 0.63, 0.63 -- grey fallback
+    return 0.63, 0.63, 0.63
 end
 
 --- Wrap text in a color escape sequence
@@ -130,16 +167,16 @@ function DGF:ColorText(text, r, g, b)
     return ("|cff%02x%02x%02x%s|r"):format(r * 255, g * 255, b * 255, text)
 end
 
---- Color text by class
+--- Color text by class file token
 function DGF:ClassColorText(text, classFile)
     local r, g, b = self:GetClassColor(classFile)
     return self:ColorText(text, r, g, b)
 end
 
---- Copy shared display settings from one module to another
+--- Copy shared display settings between modules
 function DGF:CopyDisplaySettings(fromKey, toKey)
-    local from = self.db.profile[fromKey]
-    local to = self.db.profile[toKey]
+    local from = ns.db[fromKey]
+    local to = ns.db[toKey]
     if not from or not to then return end
     to.tooltipScale = from.tooltipScale
     to.tooltipWidth = from.tooltipWidth
@@ -148,35 +185,44 @@ function DGF:CopyDisplaySettings(fromKey, toKey)
     to.sortAscending = from.sortAscending
 end
 
+--- Print a message to chat
+function DGF:Print(msg)
+    print("|cff33ff99" .. addonName .. "|r: " .. msg)
+end
+
 ---------------------------------------------------------------------------
--- Lifecycle
+-- Initialization
 ---------------------------------------------------------------------------
 
-function DGF:OnInitialize()
-    self.db = LibStub("AceDB-3.0"):New("DjinnisGuildFriendsDB", ns.defaults, true)
+local initFrame = CreateFrame("Frame")
+initFrame:RegisterEvent("ADDON_LOADED")
+initFrame:SetScript("OnEvent", function(_, _, loadedAddon)
+    if loadedAddon ~= addonName then return end
+    initFrame:UnregisterEvent("ADDON_LOADED")
 
-    -- Minimap icon via LibDBIcon
-    local icon = LibStub("LibDBIcon-1.0", true)
-    if icon then
-        ns.icon = icon
+    -- Load or create saved variables
+    if not DjinnisGuildFriendsDB then
+        DjinnisGuildFriendsDB = {}
+    end
+    MergeDefaults(DjinnisGuildFriendsDB, ns.defaults)
+    ns.db = DjinnisGuildFriendsDB
+
+    -- Setup settings UI (Settings.lua)
+    DGF:SetupOptions()
+
+    -- Slash commands
+    SLASH_DGF1 = "/dgf"
+    SLASH_DGF2 = "/djfriends"
+    SlashCmdList["DGF"] = function(input)
+        if input and input:trim() ~= "" then
+            DGF:Print("Unknown command: " .. input)
+        else
+            Settings.OpenToCategory(DGF.settingsCategoryID)
+        end
     end
 
-    -- Register slash commands
-    self:RegisterChatCommand("dgf", "SlashCommand")
-    self:RegisterChatCommand("djfriends", "SlashCommand")
-
-    -- Setup options (defined in Settings.lua)
-    self:SetupOptions()
-end
-
-function DGF:OnEnable()
-    -- Modules auto-enable via AceAddon
-end
-
-function DGF:SlashCommand(input)
-    if input and input:trim() ~= "" then
-        self:Print("Unknown command: " .. input)
-    else
-        Settings.OpenToCategory(self.optionsCategoryID)
-    end
-end
+    -- Initialize broker modules
+    if ns.FriendsBroker then ns.FriendsBroker:Init() end
+    if ns.GuildBroker then ns.GuildBroker:Init() end
+    if ns.CommunitiesBroker then ns.CommunitiesBroker:Init() end
+end)

@@ -2,28 +2,21 @@
 ## Title: Djinni's Guild & Friends
 ## Author: Djinni
 ## Version: 1.0.0
-## Notes: LDB friends and guild brokers with clickable tooltips. Works with any LDB display.
+## Notes: LDB data brokers for friends, guild, and communities with interactive tooltips. Works with any LDB display.
 ## Category: Social
 ## X-Category: Social
 ## IconTexture: Interface\FriendsFrame\UI-Toast-FriendOnlineIcon
 ## SavedVariables: DjinnisGuildFriendsDB
-## OptionalDeps: LibDBIcon-1.0, ElvUI
+## OptionalDeps: ElvUI
 
 # Libraries
 Libs\LibStub\LibStub.lua
 Libs\CallbackHandler-1.0\CallbackHandler-1.0.xml
-Libs\AceAddon-3.0\AceAddon-3.0.xml
-Libs\AceDB-3.0\AceDB-3.0.xml
-Libs\AceDBOptions-3.0\AceDBOptions-3.0.xml
-Libs\AceConsole-3.0\AceConsole-3.0.xml
-Libs\AceEvent-3.0\AceEvent-3.0.xml
-Libs\AceGUI-3.0\AceGUI-3.0.xml
-Libs\AceConfig-3.0\AceConfig-3.0.xml
 Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
-Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 
 # Addon
 Core.lua
 FriendsBroker.lua
 GuildBroker.lua
+CommunitiesBroker.lua
 Settings.lua
