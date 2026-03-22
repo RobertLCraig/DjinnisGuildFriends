@@ -23,6 +23,7 @@ ns.defaults = {
         showBNetFriends = true,
         showWoWFriends = true,
         classColorNames = true,
+        showHintBar = true,
         tooltipScale = 1.0,
         tooltipWidth = 420,
         tooltipMaxHeight = 400,
@@ -42,6 +43,8 @@ ns.defaults = {
         sortBy = "name",
         sortAscending = true,
         classColorNames = true,
+        showOfficerNotes = false,
+        showHintBar = true,
         tooltipScale = 1.0,
         tooltipWidth = 480,
         tooltipMaxHeight = 500,
@@ -61,6 +64,7 @@ ns.defaults = {
         sortBy = "name",
         sortAscending = true,
         classColorNames = true,
+        showHintBar = true,
         tooltipScale = 1.0,
         tooltipWidth = 480,
         tooltipMaxHeight = 500,
@@ -183,9 +187,52 @@ function DGF:CopyDisplaySettings(fromKey, toKey)
     if not from or not to then return end
     to.tooltipScale = from.tooltipScale
     to.tooltipWidth = from.tooltipWidth
+    to.tooltipMaxHeight = from.tooltipMaxHeight
     to.rowSpacing = from.rowSpacing
     to.classColorNames = from.classColorNames
     to.sortAscending = from.sortAscending
+end
+
+--- Build the hint bar text showing all configured click actions
+function DGF:BuildHintText(clickActions)
+    local labels = {
+        { key = "leftClick",       prefix = "LClick" },
+        { key = "rightClick",      prefix = "RClick" },
+        { key = "shiftLeftClick",  prefix = "Shift+L" },
+        { key = "shiftRightClick", prefix = "Shift+R" },
+        { key = "middleClick",     prefix = "MClick" },
+    }
+    local hints = {}
+    for _, entry in ipairs(labels) do
+        local action = clickActions[entry.key]
+        if action and action ~= "none" then
+            table.insert(hints, entry.prefix .. ": " .. (ns.ACTION_VALUES[action] or ""))
+        end
+    end
+    if #hints == 0 then return "" end
+    return "|cff888888" .. table.concat(hints, "  |  ") .. "|r"
+end
+
+--- Update scrollbar thumb/track visibility and position for a scrollable tooltip
+function DGF:UpdateScrollbar(f)
+    if not f or not f.scrollTrack then return end
+    local contentH = f.scrollContent:GetHeight()
+    local clipH = f.clipFrame:GetHeight()
+    if contentH > clipH + 1 then
+        f.scrollTrack:Show()
+        f.scrollThumb:Show()
+        local ratio = clipH / contentH
+        local thumbH = math.max(20, clipH * ratio)
+        f.scrollThumb:SetHeight(thumbH)
+        local scrollRange = contentH - clipH
+        local scrollPos = (scrollRange > 0) and (f.scrollOffset / scrollRange) or 0
+        local thumbTravel = clipH - thumbH
+        f.scrollThumb:ClearAllPoints()
+        f.scrollThumb:SetPoint("TOPRIGHT", f.scrollTrack, "TOPRIGHT", 0, -(scrollPos * thumbTravel))
+    else
+        f.scrollTrack:Hide()
+        f.scrollThumb:Hide()
+    end
 end
 
 --- Print a message to chat

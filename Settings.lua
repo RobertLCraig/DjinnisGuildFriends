@@ -51,10 +51,10 @@ local function AddSlider(content, y, label, min, max, step, getter, setter, refr
     slider:SetMinMaxValues(min, max)
     slider:SetValueStep(step)
     slider:SetObeyStepOnDrag(true)
-    slider:SetWidth(180)
-    slider:SetValue(getter())
+    slider:SetWidth(240)
     slider.Low:SetText("")
     slider.High:SetText("")
+    if slider.Text then slider.Text:SetText("") end
 
     local function FormatVal(v)
         if step < 1 then
@@ -64,17 +64,55 @@ local function AddSlider(content, y, label, min, max, step, getter, setter, refr
         end
     end
 
-    local input = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
-    input:SetPoint("LEFT", slider, "RIGHT", 8, 0)
-    input:SetSize(54, 20)
+    -- Value display: FontString always renders reliably (EditBox text can be lost
+    -- when inside scroll children before the frame is fully visible).
+    -- The EditBox sits behind the FontString and activates on click for editing.
+    local input = CreateFrame("EditBox", nil, content, "BackdropTemplate")
+    input:SetPoint("LEFT", slider, "RIGHT", 10, 0)
+    input:SetSize(54, 22)
     input:SetAutoFocus(false)
-    input:SetText(FormatVal(getter()))
+    input:SetFontObject(GameFontHighlightSmall)
+    input:SetJustifyH("CENTER")
+    input:SetMaxLetters(8)
+    input:SetTextInsets(4, 4, 0, 0)
+    input:SetBackdrop({
+        bgFile   = "Interface\\ChatFrame\\ChatFrameBackground",
+        edgeFile = "Interface\\ChatFrame\\ChatFrameBackground",
+        tile = true, edgeSize = 1, tileSize = 5,
+    })
+    input:SetBackdropColor(0, 0, 0, 0.5)
+    input:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
+
+    -- FontString overlay — always shows the current value
+    local valText = input:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    valText:SetPoint("CENTER", input, "CENTER", 0, 0)
+    valText:SetJustifyH("CENTER")
+    valText:SetText(FormatVal(getter()))
+
+    input:SetScript("OnEditFocusGained", function(self)
+        valText:Hide()
+        self:SetText(FormatVal(getter()))
+        self:HighlightText()
+    end)
+    input:SetScript("OnEditFocusLost", function(self)
+        self:HighlightText(0, 0)
+        valText:SetText(FormatVal(getter()))
+        valText:Show()
+    end)
+    input:SetScript("OnEnter", function(self)
+        self:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
+    end)
+    input:SetScript("OnLeave", function(self)
+        self:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
+    end)
 
     slider:SetScript("OnValueChanged", function(self, value)
         value = math.floor(value / step + 0.5) * step
         setter(value)
+        valText:SetText(FormatVal(value))
         input:SetText(FormatVal(value))
     end)
+    slider:SetValue(getter())
 
     input:SetScript("OnEnterPressed", function(self)
         local val = tonumber(self:GetText())
@@ -83,7 +121,6 @@ local function AddSlider(content, y, label, min, max, step, getter, setter, refr
             val = math.floor(val / step + 0.5) * step
             setter(val)
             slider:SetValue(val)
-            self:SetText(FormatVal(val))
         else
             self:SetText(FormatVal(getter()))
         end
@@ -91,14 +128,13 @@ local function AddSlider(content, y, label, min, max, step, getter, setter, refr
     end)
 
     input:SetScript("OnEscapePressed", function(self)
-        self:SetText(FormatVal(getter()))
         self:ClearFocus()
     end)
 
     if refreshList then
         table.insert(refreshList, function()
             slider:SetValue(getter())
-            input:SetText(FormatVal(getter()))
+            valText:SetText(FormatVal(getter()))
         end)
     end
     return y - 48
@@ -114,7 +150,7 @@ local function AddDropdown(content, y, label, values, getter, setter, refreshLis
 
     local dropdown = CreateFrame("Frame", ddName, content, "UIDropDownMenuTemplate")
     dropdown:SetPoint("TOPLEFT", text, "BOTTOMLEFT", -16, -2)
-    UIDropDownMenu_SetWidth(dropdown, 180)
+    UIDropDownMenu_SetWidth(dropdown, 240)
 
     UIDropDownMenu_Initialize(dropdown, function()
         local sorted = {}
@@ -152,7 +188,7 @@ local function AddEditBox(content, y, label, getter, setter, refreshList)
 
     local editbox = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
     editbox:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 4, -4)
-    editbox:SetSize(280, 20)
+    editbox:SetSize(380, 20)
     editbox:SetAutoFocus(false)
     editbox:SetText(getter())
     editbox:SetScript("OnEnterPressed", function(self)
@@ -291,6 +327,11 @@ local function BuildGeneralPanel(panel)
     y = AddSlider(c, y, "Max Height", 100, 1000, 10,
         function() return ns.db.communities.tooltipMaxHeight end,
         function(v) ns.db.communities.tooltipMaxHeight = v end, r)
+    y = AddButton(c, y, "Copy from Friends", function()
+        DGF:CopyDisplaySettings("friends", "communities")
+        if ns.CommunitiesBroker then ns.CommunitiesBroker:UpdateData() end
+        for _, cb in ipairs(r) do cb() end
+    end)
 
     c:SetHeight(math.abs(y) + 20)
 end
@@ -314,6 +355,9 @@ local function BuildFriendsPanel(panel)
     y = AddCheckbox(c, y, "Class-Colored Names",
         function() return ns.db.friends.classColorNames end,
         function(v) ns.db.friends.classColorNames = v; if ns.FriendsBroker then ns.FriendsBroker:UpdateData() end end, r)
+    y = AddCheckbox(c, y, "Show Hint Bar",
+        function() return ns.db.friends.showHintBar end,
+        function(v) ns.db.friends.showHintBar = v; if ns.FriendsBroker then ns.FriendsBroker:UpdateData() end end, r)
 
     y = AddHeader(c, y, "Grouping")
     y = AddDropdown(c, y, "Group By", ns.FRIENDS_GROUP_VALUES,
@@ -362,6 +406,13 @@ local function BuildGuildPanel(panel)
     y = AddCheckbox(c, y, "Class-Colored Names",
         function() return ns.db.guild.classColorNames end,
         function(v) ns.db.guild.classColorNames = v; if ns.GuildBroker then ns.GuildBroker:UpdateData() end end, r)
+    y = AddCheckbox(c, y, "Show Officer Notes (inline)",
+        function() return ns.db.guild.showOfficerNotes end,
+        function(v) ns.db.guild.showOfficerNotes = v; if ns.GuildBroker then ns.GuildBroker:UpdateData() end end, r)
+    y = AddDescription(c, y, "Requires guild rank permission to view officer notes.")
+    y = AddCheckbox(c, y, "Show Hint Bar",
+        function() return ns.db.guild.showHintBar end,
+        function(v) ns.db.guild.showHintBar = v; if ns.GuildBroker then ns.GuildBroker:UpdateData() end end, r)
 
     y = AddHeader(c, y, "Grouping")
     y = AddDropdown(c, y, "Group By", ns.GUILD_GROUP_VALUES,
@@ -406,15 +457,49 @@ local function BuildCommunitiesPanel(panel)
     local r = panel.refreshCallbacks
     local y = -10
 
+    -- Static sections first (so dynamic checkboxes at the bottom don't overlap)
+    y = AddHeader(c, y, "Display Options")
+    y = AddCheckbox(c, y, "Class-Colored Names",
+        function() return ns.db.communities.classColorNames end,
+        function(v) ns.db.communities.classColorNames = v; if ns.CommunitiesBroker then ns.CommunitiesBroker:UpdateData() end end, r)
+    y = AddCheckbox(c, y, "Show Hint Bar",
+        function() return ns.db.communities.showHintBar end,
+        function(v) ns.db.communities.showHintBar = v; if ns.CommunitiesBroker then ns.CommunitiesBroker:UpdateData() end end, r)
+
+    y = AddHeader(c, y, "Sorting")
+    y = AddDropdown(c, y, "Sort By", { name = "Name", class = "Class", level = "Level", zone = "Zone" },
+        function() return ns.db.communities.sortBy end,
+        function(v) ns.db.communities.sortBy = v; if ns.CommunitiesBroker then ns.CommunitiesBroker:UpdateData() end end, r)
+    y = AddCheckbox(c, y, "Ascending Order",
+        function() return ns.db.communities.sortAscending end,
+        function(v) ns.db.communities.sortAscending = v; if ns.CommunitiesBroker then ns.CommunitiesBroker:UpdateData() end end, r)
+
+    y = AddHeader(c, y, "Click Actions")
+    y = AddDescription(c, y, "Configure what happens when you click on a community member in the tooltip.")
+    y = AddDropdown(c, y, "Left Click", ns.ACTION_VALUES,
+        function() return ns.db.communities.clickActions.leftClick end,
+        function(v) ns.db.communities.clickActions.leftClick = v end, r)
+    y = AddDropdown(c, y, "Right Click", ns.ACTION_VALUES,
+        function() return ns.db.communities.clickActions.rightClick end,
+        function(v) ns.db.communities.clickActions.rightClick = v end, r)
+    y = AddDropdown(c, y, "Shift + Left Click", ns.ACTION_VALUES,
+        function() return ns.db.communities.clickActions.shiftLeftClick end,
+        function(v) ns.db.communities.clickActions.shiftLeftClick = v end, r)
+    y = AddDropdown(c, y, "Shift + Right Click", ns.ACTION_VALUES,
+        function() return ns.db.communities.clickActions.shiftRightClick end,
+        function(v) ns.db.communities.clickActions.shiftRightClick = v end, r)
+    y = AddDropdown(c, y, "Middle Click", ns.ACTION_VALUES,
+        function() return ns.db.communities.clickActions.middleClick end,
+        function(v) ns.db.communities.clickActions.middleClick = v end, r)
+
+    -- Dynamic section: community checkboxes (at bottom so resizing doesn't overlap static controls)
     y = AddHeader(c, y, "Enabled Communities")
     y = AddDescription(c, y, "Uncheck a community to hide it from the tooltip. New communities are shown by default.")
 
-    -- Dynamic community checkboxes — rebuilt on each OnShow
     local dynamicStart = y
     local dynamicWidgets = {}
 
     local function RebuildClubList()
-        -- Remove old dynamic widgets
         for _, widget in ipairs(dynamicWidgets) do
             widget:Hide()
             widget:SetParent(nil)
@@ -464,51 +549,14 @@ local function BuildCommunitiesPanel(panel)
             end
         end
 
-        -- Continue with static controls after dynamic list
-        return dy
+        c:SetHeight(math.abs(dy) + 20)
     end
 
-    -- Build once now (will be rebuilt on show)
-    y = RebuildClubList()
+    RebuildClubList()
 
-    -- Store rebuild function for OnShow
-    local staticY = y -- snapshot after initial build
     panel:HookScript("OnShow", function()
         RebuildClubList()
     end)
-
-    y = AddHeader(c, y, "Display Options")
-    y = AddCheckbox(c, y, "Class-Colored Names",
-        function() return ns.db.communities.classColorNames end,
-        function(v) ns.db.communities.classColorNames = v; if ns.CommunitiesBroker then ns.CommunitiesBroker:UpdateData() end end, r)
-
-    y = AddHeader(c, y, "Sorting")
-    y = AddDropdown(c, y, "Sort By", { name = "Name", class = "Class", level = "Level", zone = "Zone" },
-        function() return ns.db.communities.sortBy end,
-        function(v) ns.db.communities.sortBy = v; if ns.CommunitiesBroker then ns.CommunitiesBroker:UpdateData() end end, r)
-    y = AddCheckbox(c, y, "Ascending Order",
-        function() return ns.db.communities.sortAscending end,
-        function(v) ns.db.communities.sortAscending = v; if ns.CommunitiesBroker then ns.CommunitiesBroker:UpdateData() end end, r)
-
-    y = AddHeader(c, y, "Click Actions")
-    y = AddDescription(c, y, "Configure what happens when you click on a community member in the tooltip.")
-    y = AddDropdown(c, y, "Left Click", ns.ACTION_VALUES,
-        function() return ns.db.communities.clickActions.leftClick end,
-        function(v) ns.db.communities.clickActions.leftClick = v end, r)
-    y = AddDropdown(c, y, "Right Click", ns.ACTION_VALUES,
-        function() return ns.db.communities.clickActions.rightClick end,
-        function(v) ns.db.communities.clickActions.rightClick = v end, r)
-    y = AddDropdown(c, y, "Shift + Left Click", ns.ACTION_VALUES,
-        function() return ns.db.communities.clickActions.shiftLeftClick end,
-        function(v) ns.db.communities.clickActions.shiftLeftClick = v end, r)
-    y = AddDropdown(c, y, "Shift + Right Click", ns.ACTION_VALUES,
-        function() return ns.db.communities.clickActions.shiftRightClick end,
-        function(v) ns.db.communities.clickActions.shiftRightClick = v end, r)
-    y = AddDropdown(c, y, "Middle Click", ns.ACTION_VALUES,
-        function() return ns.db.communities.clickActions.middleClick end,
-        function(v) ns.db.communities.clickActions.middleClick = v end, r)
-
-    c:SetHeight(math.abs(y) + 20)
 end
 
 ---------------------------------------------------------------------------

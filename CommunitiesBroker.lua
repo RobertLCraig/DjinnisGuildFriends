@@ -270,6 +270,19 @@ local function CreateTooltipFrame()
     f.scrollContent = CreateFrame("Frame", nil, f.clipFrame)
     f.scrollOffset = 0
 
+    -- Scrollbar track and thumb
+    f.scrollTrack = f:CreateTexture(nil, "ARTWORK")
+    f.scrollTrack:SetPoint("TOPLEFT", f.clipFrame, "TOPRIGHT", 2, 0)
+    f.scrollTrack:SetPoint("BOTTOMLEFT", f.clipFrame, "BOTTOMRIGHT", 2, 0)
+    f.scrollTrack:SetWidth(4)
+    f.scrollTrack:SetColorTexture(1, 1, 1, 0.08)
+    f.scrollTrack:Hide()
+
+    f.scrollThumb = f:CreateTexture(nil, "OVERLAY")
+    f.scrollThumb:SetWidth(4)
+    f.scrollThumb:SetColorTexture(0.8, 0.8, 0.8, 0.4)
+    f.scrollThumb:Hide()
+
     f:EnableMouseWheel(true)
     f:SetScript("OnMouseWheel", function(self, delta)
         local contentH = self.scrollContent:GetHeight() or 0
@@ -278,6 +291,7 @@ local function CreateTooltipFrame()
         self.scrollOffset = math.max(0, math.min(maxScroll, self.scrollOffset - delta * (ROW_HEIGHT + 4)))
         self.scrollContent:ClearAllPoints()
         self.scrollContent:SetPoint("TOPLEFT", self.clipFrame, "TOPLEFT", 0, self.scrollOffset)
+        DGF:UpdateScrollbar(self)
     end)
 
     f:SetScript("OnEnter", function()
@@ -412,17 +426,13 @@ function CommunitiesBroker:PopulateTooltip()
         DGF:ColorText(tostring(self.totalOnline), 0, 1, 0)
     )
 
-    local hints = {}
-    if db.clickActions.leftClick ~= "none" then
-        table.insert(hints, "LClick: " .. (ns.ACTION_VALUES[db.clickActions.leftClick] or ""))
+    local showHint = db.showHintBar ~= false
+    if showHint then
+        tooltipFrame.hint:SetText(DGF:BuildHintText(db.clickActions))
+        tooltipFrame.hint:Show()
+    else
+        tooltipFrame.hint:Hide()
     end
-    if db.clickActions.rightClick ~= "none" then
-        table.insert(hints, "RClick: " .. (ns.ACTION_VALUES[db.clickActions.rightClick] or ""))
-    end
-    if db.clickActions.shiftLeftClick ~= "none" then
-        table.insert(hints, "Shift+L: " .. (ns.ACTION_VALUES[db.clickActions.shiftLeftClick] or ""))
-    end
-    tooltipFrame.hint:SetText("|cff888888" .. table.concat(hints, "  |  ") .. "|r")
 
     for _, row in pairs(rowPool) do
         row:Hide()
@@ -506,10 +516,11 @@ function CommunitiesBroker:PopulateTooltip()
     end
 
     -- Scroll geometry
+    local fixedBottom = showHint and FIXED_BOTTOM or (TOOLTIP_PADDING + 4)
     local contentH = math.max(math.abs(yOffset), ROW_HEIGHT)
     local maxH = ns.db.communities.tooltipMaxHeight or 500
     local innerWidth = (ns.db.communities.tooltipWidth or 480) - 2 * TOOLTIP_PADDING
-    local scrollAreaH = math.min(contentH, math.max(ROW_HEIGHT, maxH - FIXED_TOP - FIXED_BOTTOM))
+    local scrollAreaH = math.min(contentH, math.max(ROW_HEIGHT, maxH - FIXED_TOP - fixedBottom))
 
     tooltipFrame.clipFrame:ClearAllPoints()
     tooltipFrame.clipFrame:SetPoint("TOPLEFT", tooltipFrame, "TOPLEFT", TOOLTIP_PADDING, -FIXED_TOP)
@@ -518,7 +529,8 @@ function CommunitiesBroker:PopulateTooltip()
     tooltipFrame.scrollOffset = 0
     tooltipFrame.scrollContent:ClearAllPoints()
     tooltipFrame.scrollContent:SetPoint("TOPLEFT", tooltipFrame.clipFrame, "TOPLEFT", 0, 0)
-    tooltipFrame:SetHeight(FIXED_TOP + scrollAreaH + FIXED_BOTTOM)
+    tooltipFrame:SetHeight(FIXED_TOP + scrollAreaH + fixedBottom)
+    DGF:UpdateScrollbar(tooltipFrame)
 end
 
 ---------------------------------------------------------------------------

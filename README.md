@@ -26,13 +26,18 @@ Loosely inspired by the ElvUI Shadow & Light friends list.
 
 - **Three LDB brokers** — Friends, Guild, and Communities, each as an independent data source
 - **Clickable tooltips** — custom frames with per-member rows; click to whisper, invite, /who, and more
+- **Scrollable tooltips** — configurable max height per broker; mouse wheel to scroll with visual scrollbar indicator
 - **Configurable click actions** — remap Left, Right, Shift+Left, Shift+Right, and Middle click independently per broker
+- **Hint bar** — tooltip footer shows all configured click actions at a glance; can be toggled off per broker
 - **Grouping** — group friends by BNet/In-Game, zone, or `#tag` notes; guild members by rank, level bracket, or zone
 - **Sorting** — sort by name, class, level, zone, or status; ascending or descending
 - **Class-coloured names** — member names tinted by their class colour
 - **AFK / DND indicators** — visual status markers on each row
 - **Battle.net friends** — shows BNet friends currently playing WoW alongside character friends
+- **Guild officer notes** — optionally display officer notes inline in the guild tooltip (requires guild rank permission)
 - **Communities** — dynamically lists all your subscribed communities (skipping guild, which has its own broker); individual communities can be hidden from settings
+- **Numeric inputs on sliders** — click the value next to any slider to type an exact number
+- **Copy settings** — copy display settings (scale, width, row spacing, max height) between brokers
 - **Blizzard Settings integration** — all options accessible via Game Menu → Options → AddOns → Djinni's Guild & Friends
 - **No external dependencies** — all required libraries are embedded; no Ace3 or other frameworks needed
 
