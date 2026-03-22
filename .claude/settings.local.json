@@ -7,7 +7,9 @@
       "Bash(DST=\"c:/Games/World of Warcraft/_retail_/Interface/AddOns/DjinnisGuildFriends/Libs\")",
       "Bash(mkdir -p \"$DST\")",
       "Bash(for lib:*)",
-      "Bash(do)"
+      "Bash(do)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:www.curseforge.com)"
     ]
   }
 }
