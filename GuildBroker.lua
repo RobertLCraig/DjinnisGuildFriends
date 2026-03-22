@@ -20,6 +20,9 @@ local ROW_HEIGHT = 16
 local TOOLTIP_PADDING = 10
 local HEADER_HEIGHT = 24
 
+local FIXED_TOP    = TOOLTIP_PADDING + HEADER_HEIGHT + 20  -- 54px: header + col headers row (overridden in PopulateTooltip when MOTD present)
+local FIXED_BOTTOM = TOOLTIP_PADDING * 2 + 18              -- 38px: hint bar + padding
+
 local STATUS_STRINGS = {
     [0] = "",
     [1] = "|cffffcc00[AFK]|r ",
@@ -112,34 +115,34 @@ function GuildBroker:UpdateData()
               connected, memberStatus, classFile, _, _, isMobile =
               GetGuildRosterInfo(i)
 
-        if not name then break end
+        if name then
+            local status = memberStatus or 0
+            local isOnline = connected or isMobile
 
-        local status = memberStatus or 0
-        local isOnline = connected or isMobile
+            local displayZone = zone or ""
+            if isMobile and not connected then
+                displayZone = REMOTE_CHAT or "Mobile"
+            end
 
-        local displayZone = zone or ""
-        if isMobile and not connected then
-            displayZone = REMOTE_CHAT or "Mobile"
-        end
-
-        if isOnline then
-            onlineCount = onlineCount + 1
-            table.insert(members, {
-                name      = name,
-                level     = level or 0,
-                classFile = classFile or "",
-                area      = displayZone,
-                rank      = rank or "",
-                rankIndex = rankIndex or 0,
-                connected = connected,
-                isMobile  = isMobile,
-                status    = status,
-                afk       = (status == 1),
-                dnd       = (status == 2),
-                notes     = note or "",
-                officerNote = officerNote or "",
-                fullName  = name,
-            })
+            if isOnline then
+                onlineCount = onlineCount + 1
+                table.insert(members, {
+                    name      = name,
+                    level     = level or 0,
+                    classFile = classFile or "",
+                    area      = displayZone,
+                    rank      = rank or "",
+                    rankIndex = rankIndex or 0,
+                    connected = connected,
+                    isMobile  = isMobile,
+                    status    = status,
+                    afk       = (status == 1),
+                    dnd       = (status == 2),
+                    notes     = note or "",
+                    officerNote = officerNote or "",
+                    fullName  = name,
+                })
+            end
         end
     end
 
@@ -204,7 +207,7 @@ end
 ---------------------------------------------------------------------------
 
 local function CreateTooltipFrame()
-    local f = CreateFrame("Frame", "DGFGuildTooltip", UIParent, "BackdropTemplate")
+    local f = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     f:SetFrameStrata("TOOLTIP")
     f:SetClampedToScreen(true)
     f:EnableMouse(true)
@@ -261,6 +264,22 @@ local function CreateTooltipFrame()
     f.hint:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -TOOLTIP_PADDING, TOOLTIP_PADDING)
     f.hint:SetJustifyH("LEFT")
 
+    -- Scrollable content area (clip frame + content frame)
+    f.clipFrame = CreateFrame("Frame", nil, f)
+    f.clipFrame:SetClipsChildren(true)
+    f.scrollContent = CreateFrame("Frame", nil, f.clipFrame)
+    f.scrollOffset = 0
+
+    f:EnableMouseWheel(true)
+    f:SetScript("OnMouseWheel", function(self, delta)
+        local contentH = self.scrollContent:GetHeight() or 0
+        local clipH = self.clipFrame:GetHeight() or 0
+        local maxScroll = math.max(0, contentH - clipH)
+        self.scrollOffset = math.max(0, math.min(maxScroll, self.scrollOffset - delta * (ROW_HEIGHT + 4)))
+        self.scrollContent:ClearAllPoints()
+        self.scrollContent:SetPoint("TOPLEFT", self.clipFrame, "TOPLEFT", 0, self.scrollOffset)
+    end)
+
     f:SetScript("OnEnter", function()
         GuildBroker:CancelTooltipHideTimer()
     end)
@@ -281,6 +300,7 @@ local function UpdateTooltipLayout(tooltipWidth)
     local rankW = math.floor(innerWidth * 0.15)
     local zoneW = math.floor(innerWidth * 0.22)
     local noteW = innerWidth - nameW - levelW - rankW - zoneW - 16
+    noteW = math.max(50, noteW)
 
     tooltipFrame:SetWidth(tooltipWidth)
     tooltipFrame.colName:SetWidth(nameW)
@@ -293,6 +313,10 @@ local function UpdateTooltipLayout(tooltipWidth)
         row.rankText:SetWidth(rankW)
         row.zoneText:SetWidth(zoneW)
         row.noteText:SetWidth(noteW)
+    end
+
+    if tooltipFrame.scrollContent then
+        tooltipFrame.scrollContent:SetWidth(innerWidth)
     end
 end
 
@@ -399,6 +423,7 @@ function GuildBroker:PopulateTooltip()
     local members = self.guildCache
     local db = ns.db.guild
     local useClassColors = db.classColorNames
+    local sc = tooltipFrame.scrollContent
 
     tooltipFrame.header:SetText(
         DGF:ColorText(self.guildName .. "  ", 0.4, 0.78, 1) ..
@@ -419,6 +444,9 @@ function GuildBroker:PopulateTooltip()
     if motd ~= "" then
         motdHeight = tooltipFrame.motd:GetStringHeight() + 4
     end
+
+    -- fixedTop is dynamic based on MOTD presence
+    local fixedTop = TOOLTIP_PADDING + HEADER_HEIGHT + motdHeight + 4 + 16
 
     local colY = -(TOOLTIP_PADDING + HEADER_HEIGHT + motdHeight + 4)
     tooltipFrame.colName:ClearAllPoints()
@@ -447,8 +475,8 @@ function GuildBroker:PopulateTooltip()
     for _, row in pairs(rowPool) do
         row:Hide()
     end
-    if tooltipFrame.groupHeaders then
-        for _, hdr in pairs(tooltipFrame.groupHeaders) do
+    if sc.groupHeaders then
+        for _, hdr in pairs(sc.groupHeaders) do
             hdr:Hide()
         end
     end
@@ -458,14 +486,14 @@ function GuildBroker:PopulateTooltip()
     local groupBy = db.groupBy or "none"
     local groups, groupOrder = self:BuildGroups(members, groupBy)
 
-    local yOffset = colY - 16
+    local yOffset = 0
     local rowIdx = 0
 
     local function RenderMember(member)
         rowIdx = rowIdx + 1
-        local row = GetOrCreateRow(tooltipFrame, rowIdx)
+        local row = GetOrCreateRow(sc, rowIdx)
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", tooltipFrame, "TOPLEFT", TOOLTIP_PADDING, yOffset)
+        row:SetPoint("TOPLEFT", sc, "TOPLEFT", 0, yOffset)
         row.memberData = member
 
         local status = STATUS_STRINGS[member.status] or ""
@@ -502,9 +530,9 @@ function GuildBroker:PopulateTooltip()
             local groupMembers = groups[groupName]
             if groupMembers and #groupMembers > 0 then
                 yOffset = yOffset - 4
-                local hdr = self:GetOrCreateGroupHeader(tooltipFrame, groupName)
+                local hdr = self:GetOrCreateGroupHeader(sc, groupName)
                 hdr:ClearAllPoints()
-                hdr:SetPoint("TOPLEFT", tooltipFrame, "TOPLEFT", TOOLTIP_PADDING, yOffset)
+                hdr:SetPoint("TOPLEFT", sc, "TOPLEFT", 0, yOffset)
                 hdr:SetText(DGF:ColorText(groupName .. " (" .. #groupMembers .. ")", 1, 0.82, 0))
                 hdr:Show()
                 yOffset = yOffset - 16
@@ -520,9 +548,9 @@ function GuildBroker:PopulateTooltip()
 
     if #members == 0 then
         rowIdx = rowIdx + 1
-        local row = GetOrCreateRow(tooltipFrame, rowIdx)
+        local row = GetOrCreateRow(sc, rowIdx)
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", tooltipFrame, "TOPLEFT", TOOLTIP_PADDING, yOffset)
+        row:SetPoint("TOPLEFT", sc, "TOPLEFT", 0, yOffset)
         row.memberData = nil
         row.nameText:SetText("|cff888888No guild members online|r")
         row.levelText:SetText("")
@@ -532,7 +560,20 @@ function GuildBroker:PopulateTooltip()
         yOffset = yOffset - rowStep
     end
 
-    tooltipFrame:SetHeight(math.abs(yOffset) + TOOLTIP_PADDING + 20)
+    -- Scroll geometry
+    local contentH = math.max(math.abs(yOffset), ROW_HEIGHT)
+    local maxH = ns.db.guild.tooltipMaxHeight or 500
+    local innerWidth = (ns.db.guild.tooltipWidth or 480) - 2 * TOOLTIP_PADDING
+    local scrollAreaH = math.min(contentH, math.max(ROW_HEIGHT, maxH - fixedTop - FIXED_BOTTOM))
+
+    tooltipFrame.clipFrame:ClearAllPoints()
+    tooltipFrame.clipFrame:SetPoint("TOPLEFT", tooltipFrame, "TOPLEFT", TOOLTIP_PADDING, -fixedTop)
+    tooltipFrame.clipFrame:SetSize(innerWidth, scrollAreaH)
+    tooltipFrame.scrollContent:SetSize(innerWidth, contentH)
+    tooltipFrame.scrollOffset = 0
+    tooltipFrame.scrollContent:ClearAllPoints()
+    tooltipFrame.scrollContent:SetPoint("TOPLEFT", tooltipFrame.clipFrame, "TOPLEFT", 0, 0)
+    tooltipFrame:SetHeight(fixedTop + scrollAreaH + FIXED_BOTTOM)
 end
 
 ---------------------------------------------------------------------------
@@ -546,7 +587,7 @@ function GuildBroker:GetOrCreateGroupHeader(parent, name)
     local hdr = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     hdr:SetJustifyH("LEFT")
     hdr:SetHeight(14)
-    hdr:SetPoint("RIGHT", parent, "RIGHT", -TOOLTIP_PADDING, 0)
+    hdr:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
     parent.groupHeaders[name] = hdr
     return hdr
 end

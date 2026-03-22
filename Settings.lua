@@ -51,33 +51,54 @@ local function AddSlider(content, y, label, min, max, step, getter, setter, refr
     slider:SetMinMaxValues(min, max)
     slider:SetValueStep(step)
     slider:SetObeyStepOnDrag(true)
-    slider:SetWidth(200)
+    slider:SetWidth(180)
     slider:SetValue(getter())
     slider.Low:SetText("")
     slider.High:SetText("")
 
-    local valText = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    valText:SetPoint("LEFT", slider, "RIGHT", 8, 0)
-
-    local function UpdateValText(v)
+    local function FormatVal(v)
         if step < 1 then
-            valText:SetText(string.format("%.2f", v))
+            return string.format("%.2f", v)
         else
-            valText:SetText(tostring(math.floor(v + 0.5)))
+            return tostring(math.floor(v + 0.5))
         end
     end
-    UpdateValText(getter())
+
+    local input = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
+    input:SetPoint("LEFT", slider, "RIGHT", 8, 0)
+    input:SetSize(54, 20)
+    input:SetAutoFocus(false)
+    input:SetText(FormatVal(getter()))
 
     slider:SetScript("OnValueChanged", function(self, value)
         value = math.floor(value / step + 0.5) * step
         setter(value)
-        UpdateValText(value)
+        input:SetText(FormatVal(value))
+    end)
+
+    input:SetScript("OnEnterPressed", function(self)
+        local val = tonumber(self:GetText())
+        if val then
+            val = math.max(min, math.min(max, val))
+            val = math.floor(val / step + 0.5) * step
+            setter(val)
+            slider:SetValue(val)
+            self:SetText(FormatVal(val))
+        else
+            self:SetText(FormatVal(getter()))
+        end
+        self:ClearFocus()
+    end)
+
+    input:SetScript("OnEscapePressed", function(self)
+        self:SetText(FormatVal(getter()))
+        self:ClearFocus()
     end)
 
     if refreshList then
         table.insert(refreshList, function()
             slider:SetValue(getter())
-            UpdateValText(getter())
+            input:SetText(FormatVal(getter()))
         end)
     end
     return y - 48
@@ -223,6 +244,9 @@ local function BuildGeneralPanel(panel)
     y = AddSlider(c, y, "Row Spacing", 0, 16, 1,
         function() return ns.db.friends.rowSpacing end,
         function(v) ns.db.friends.rowSpacing = v end, r)
+    y = AddSlider(c, y, "Max Height", 100, 1000, 10,
+        function() return ns.db.friends.tooltipMaxHeight end,
+        function(v) ns.db.friends.tooltipMaxHeight = v end, r)
     y = AddButton(c, y, "Copy from Guild", function()
         DGF:CopyDisplaySettings("guild", "friends")
         if ns.FriendsBroker then ns.FriendsBroker:UpdateData() end
@@ -242,6 +266,9 @@ local function BuildGeneralPanel(panel)
     y = AddSlider(c, y, "Row Spacing", 0, 16, 1,
         function() return ns.db.guild.rowSpacing end,
         function(v) ns.db.guild.rowSpacing = v end, r)
+    y = AddSlider(c, y, "Max Height", 100, 1000, 10,
+        function() return ns.db.guild.tooltipMaxHeight end,
+        function(v) ns.db.guild.tooltipMaxHeight = v end, r)
     y = AddButton(c, y, "Copy from Friends", function()
         DGF:CopyDisplaySettings("friends", "guild")
         if ns.GuildBroker then ns.GuildBroker:UpdateData() end
@@ -261,6 +288,9 @@ local function BuildGeneralPanel(panel)
     y = AddSlider(c, y, "Row Spacing", 0, 16, 1,
         function() return ns.db.communities.rowSpacing end,
         function(v) ns.db.communities.rowSpacing = v end, r)
+    y = AddSlider(c, y, "Max Height", 100, 1000, 10,
+        function() return ns.db.communities.tooltipMaxHeight end,
+        function(v) ns.db.communities.tooltipMaxHeight = v end, r)
 
     c:SetHeight(math.abs(y) + 20)
 end

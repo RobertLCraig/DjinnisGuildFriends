@@ -19,6 +19,9 @@ local ROW_HEIGHT = 16
 local TOOLTIP_PADDING = 10
 local HEADER_HEIGHT = 24
 
+local FIXED_TOP    = TOOLTIP_PADDING + HEADER_HEIGHT + 20  -- 54px: header + col headers row
+local FIXED_BOTTOM = TOOLTIP_PADDING * 2 + 18              -- 38px: hint bar + padding
+
 ---------------------------------------------------------------------------
 -- LDB Data Object
 ---------------------------------------------------------------------------
@@ -210,7 +213,7 @@ end
 ---------------------------------------------------------------------------
 
 local function CreateTooltipFrame()
-    local f = CreateFrame("Frame", "DGFCommunitiesTooltip", UIParent, "BackdropTemplate")
+    local f = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     f:SetFrameStrata("TOOLTIP")
     f:SetClampedToScreen(true)
     f:EnableMouse(true)
@@ -261,6 +264,22 @@ local function CreateTooltipFrame()
     f.hint:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -TOOLTIP_PADDING, TOOLTIP_PADDING)
     f.hint:SetJustifyH("LEFT")
 
+    -- Scrollable content area (clip frame + content frame)
+    f.clipFrame = CreateFrame("Frame", nil, f)
+    f.clipFrame:SetClipsChildren(true)
+    f.scrollContent = CreateFrame("Frame", nil, f.clipFrame)
+    f.scrollOffset = 0
+
+    f:EnableMouseWheel(true)
+    f:SetScript("OnMouseWheel", function(self, delta)
+        local contentH = self.scrollContent:GetHeight() or 0
+        local clipH = self.clipFrame:GetHeight() or 0
+        local maxScroll = math.max(0, contentH - clipH)
+        self.scrollOffset = math.max(0, math.min(maxScroll, self.scrollOffset - delta * (ROW_HEIGHT + 4)))
+        self.scrollContent:ClearAllPoints()
+        self.scrollContent:SetPoint("TOPLEFT", self.clipFrame, "TOPLEFT", 0, self.scrollOffset)
+    end)
+
     f:SetScript("OnEnter", function()
         CommunitiesBroker:CancelTooltipHideTimer()
     end)
@@ -280,6 +299,7 @@ local function UpdateTooltipLayout(tooltipWidth)
     local levelW = 30
     local zoneW = math.floor(innerWidth * 0.28)
     local noteW = innerWidth - nameW - levelW - zoneW - 12
+    noteW = math.max(50, noteW)
 
     tooltipFrame:SetWidth(tooltipWidth)
     tooltipFrame.colName:SetWidth(nameW)
@@ -290,6 +310,10 @@ local function UpdateTooltipLayout(tooltipWidth)
         row.nameText:SetWidth(nameW)
         row.zoneText:SetWidth(zoneW)
         row.noteText:SetWidth(noteW)
+    end
+
+    if tooltipFrame.scrollContent then
+        tooltipFrame.scrollContent:SetWidth(innerWidth)
     end
 end
 
@@ -377,6 +401,7 @@ function CommunitiesBroker:PopulateTooltip()
 
     local db = ns.db.communities
     local useClassColors = db.classColorNames
+    local sc = tooltipFrame.scrollContent
 
     -- Count enabled clubs
     local clubCount = 0
@@ -402,15 +427,15 @@ function CommunitiesBroker:PopulateTooltip()
     for _, row in pairs(rowPool) do
         row:Hide()
     end
-    if tooltipFrame.groupHeaders then
-        for _, hdr in pairs(tooltipFrame.groupHeaders) do
+    if sc.groupHeaders then
+        for _, hdr in pairs(sc.groupHeaders) do
             hdr:Hide()
         end
     end
 
     local rowSpacing = db.rowSpacing or 4
     local rowStep = ROW_HEIGHT + rowSpacing
-    local yOffset = -(TOOLTIP_PADDING + HEADER_HEIGHT + 20)
+    local yOffset = 0
     local rowIdx = 0
 
     -- Sort clubs alphabetically by name
@@ -431,18 +456,18 @@ function CommunitiesBroker:PopulateTooltip()
 
             -- Community header
             yOffset = yOffset - 4
-            local hdr = self:GetOrCreateGroupHeader(tooltipFrame, clubData.info.name)
+            local hdr = self:GetOrCreateGroupHeader(sc, clubData.info.name)
             hdr:ClearAllPoints()
-            hdr:SetPoint("TOPLEFT", tooltipFrame, "TOPLEFT", TOOLTIP_PADDING, yOffset)
+            hdr:SetPoint("TOPLEFT", sc, "TOPLEFT", 0, yOffset)
             hdr:SetText(DGF:ColorText(clubData.info.name .. " (" .. #members .. ")", 0.4, 0.78, 1))
             hdr:Show()
             yOffset = yOffset - 16
 
             for _, member in ipairs(members) do
                 rowIdx = rowIdx + 1
-                local row = GetOrCreateRow(tooltipFrame, rowIdx)
+                local row = GetOrCreateRow(sc, rowIdx)
                 row:ClearAllPoints()
-                row:SetPoint("TOPLEFT", tooltipFrame, "TOPLEFT", TOOLTIP_PADDING, yOffset)
+                row:SetPoint("TOPLEFT", sc, "TOPLEFT", 0, yOffset)
                 row.memberData = member
 
                 local status = ""
@@ -469,9 +494,9 @@ function CommunitiesBroker:PopulateTooltip()
 
     if not hasAnyMembers then
         rowIdx = rowIdx + 1
-        local row = GetOrCreateRow(tooltipFrame, rowIdx)
+        local row = GetOrCreateRow(sc, rowIdx)
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", tooltipFrame, "TOPLEFT", TOOLTIP_PADDING, yOffset)
+        row:SetPoint("TOPLEFT", sc, "TOPLEFT", 0, yOffset)
         row.memberData = nil
         row.nameText:SetText("|cff888888No community members online|r")
         row.levelText:SetText("")
@@ -480,7 +505,20 @@ function CommunitiesBroker:PopulateTooltip()
         yOffset = yOffset - rowStep
     end
 
-    tooltipFrame:SetHeight(math.abs(yOffset) + TOOLTIP_PADDING + 20)
+    -- Scroll geometry
+    local contentH = math.max(math.abs(yOffset), ROW_HEIGHT)
+    local maxH = ns.db.communities.tooltipMaxHeight or 500
+    local innerWidth = (ns.db.communities.tooltipWidth or 480) - 2 * TOOLTIP_PADDING
+    local scrollAreaH = math.min(contentH, math.max(ROW_HEIGHT, maxH - FIXED_TOP - FIXED_BOTTOM))
+
+    tooltipFrame.clipFrame:ClearAllPoints()
+    tooltipFrame.clipFrame:SetPoint("TOPLEFT", tooltipFrame, "TOPLEFT", TOOLTIP_PADDING, -FIXED_TOP)
+    tooltipFrame.clipFrame:SetSize(innerWidth, scrollAreaH)
+    tooltipFrame.scrollContent:SetSize(innerWidth, contentH)
+    tooltipFrame.scrollOffset = 0
+    tooltipFrame.scrollContent:ClearAllPoints()
+    tooltipFrame.scrollContent:SetPoint("TOPLEFT", tooltipFrame.clipFrame, "TOPLEFT", 0, 0)
+    tooltipFrame:SetHeight(FIXED_TOP + scrollAreaH + FIXED_BOTTOM)
 end
 
 ---------------------------------------------------------------------------
@@ -494,7 +532,7 @@ function CommunitiesBroker:GetOrCreateGroupHeader(parent, name)
     local hdr = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     hdr:SetJustifyH("LEFT")
     hdr:SetHeight(14)
-    hdr:SetPoint("RIGHT", parent, "RIGHT", -TOOLTIP_PADDING, 0)
+    hdr:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
     parent.groupHeaders[name] = hdr
     return hdr
 end

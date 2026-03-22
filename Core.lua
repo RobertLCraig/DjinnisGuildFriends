@@ -25,6 +25,7 @@ ns.defaults = {
         classColorNames = true,
         tooltipScale = 1.0,
         tooltipWidth = 420,
+        tooltipMaxHeight = 400,
         rowSpacing = 4,
         groupBy = "none",
         groupCollapsed = {},
@@ -43,6 +44,7 @@ ns.defaults = {
         classColorNames = true,
         tooltipScale = 1.0,
         tooltipWidth = 480,
+        tooltipMaxHeight = 500,
         rowSpacing = 4,
         groupBy = "none",
         groupCollapsed = {},
@@ -61,6 +63,7 @@ ns.defaults = {
         classColorNames = true,
         tooltipScale = 1.0,
         tooltipWidth = 480,
+        tooltipMaxHeight = 500,
         rowSpacing = 4,
         disabledClubs = {},
         clickActions = {
@@ -214,7 +217,7 @@ initFrame:SetScript("OnEvent", function(_, _, loadedAddon)
     SLASH_DGF1 = "/dgf"
     SLASH_DGF2 = "/djfriends"
     SlashCmdList["DGF"] = function(input)
-        if input and input:trim() ~= "" then
+        if input and input:match("%S") then
             DGF:Print("Unknown command: " .. input)
         else
             Settings.OpenToCategory(DGF.settingsCategoryID)
