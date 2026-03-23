@@ -1,6 +1,6 @@
 # Djinni's Guild & Friends
 
-LDB data brokers for your **Friends List**, **Guild Roster**, and **Communities** with interactive clickable tooltips. Works with any LDB display: ElvUI DataText, TitanPanel, EQOL Datapanels, FuBar, and more.
+LDB data brokers for your **Friends List**, **Guild Roster**, and **Communities** with interactive clickable tooltips, allowing you to whisper, invite, whois and more right from the tooltip. Works with any LDB display: ElvUI DataText, TitanPanel, EQOL Datapanels, FuBar, and more.
 
 Loosely inspired by the ElvUI Shadow & Light friends list.
 
