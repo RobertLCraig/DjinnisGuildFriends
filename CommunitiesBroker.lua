@@ -281,31 +281,7 @@ local function CreateTooltipFrame()
     return f
 end
 
-local function UpdateTooltipLayout(tooltipWidth)
-    if not tooltipFrame then return end
 
-    local innerWidth = tooltipWidth - 2 * TOOLTIP_PADDING
-    local nameW = math.floor(innerWidth * 0.30)
-    local levelW = 30
-    local zoneW = math.floor(innerWidth * 0.28)
-    local noteW = innerWidth - nameW - levelW - zoneW - 12
-    noteW = math.max(50, noteW)
-
-    tooltipFrame:SetWidth(tooltipWidth)
-    tooltipFrame.colName:SetWidth(nameW)
-    tooltipFrame.colZone:SetWidth(zoneW)
-
-    for _, row in pairs(rowPool) do
-        row:SetWidth(innerWidth)
-        row.nameText:SetWidth(nameW)
-        row.zoneText:SetWidth(zoneW)
-        row.noteText:SetWidth(noteW)
-    end
-
-    if tooltipFrame.scrollContent then
-        tooltipFrame.scrollContent:SetWidth(innerWidth)
-    end
-end
 
 local function GetOrCreateRow(parent, index)
     if rowPool[index] then
@@ -380,7 +356,6 @@ function CommunitiesBroker:ShowTooltip(anchor)
     tooltipFrame:ClearAllPoints()
     tooltipFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, 4)
     tooltipFrame:SetScale(ns.db.communities.tooltipScale or 1.0)
-    UpdateTooltipLayout(ns.db.communities.tooltipWidth or 480)
 
     self:PopulateTooltip()
     tooltipFrame:Show()
@@ -391,6 +366,18 @@ function CommunitiesBroker:PopulateTooltip()
 
     local db = ns.db.communities
     local useClassColors = db.classColorNames
+
+    local tooltipWidth = db.tooltipWidth or 480
+    local innerWidth = tooltipWidth - 2 * TOOLTIP_PADDING
+    local nameW = math.floor(innerWidth * 0.30)
+    local levelW = 30
+    local zoneW = math.floor(innerWidth * 0.28)
+    local noteW = math.max(50, innerWidth - nameW - levelW - zoneW - 12)
+
+    tooltipFrame:SetWidth(tooltipWidth)
+    tooltipFrame.colName:SetWidth(nameW)
+    tooltipFrame.colZone:SetWidth(zoneW)
+    
     local sc = tooltipFrame.scrollContent
 
     -- Count enabled clubs
@@ -439,6 +426,12 @@ function CommunitiesBroker:PopulateTooltip()
         local row = GetOrCreateRow(sc, rowIdx)
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", sc, "TOPLEFT", 0, yOffset)
+        
+        row:SetWidth(innerWidth)
+        row.nameText:SetWidth(nameW)
+        row.zoneText:SetWidth(zoneW)
+        row.noteText:SetWidth(noteW)
+        
         row.memberData = member
 
         local status = ""
@@ -564,6 +557,12 @@ function CommunitiesBroker:PopulateTooltip()
         local row = GetOrCreateRow(sc, rowIdx)
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", sc, "TOPLEFT", 0, yOffset)
+        
+        row:SetWidth(innerWidth)
+        row.nameText:SetWidth(nameW)
+        row.zoneText:SetWidth(zoneW)
+        row.noteText:SetWidth(noteW)
+        
         row.memberData = nil
         row.nameText:SetText("|cff888888No community members online|r")
         row.levelText:SetText("")
