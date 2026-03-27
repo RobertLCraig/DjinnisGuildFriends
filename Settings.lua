@@ -493,7 +493,7 @@ local function BuildCommunitiesPanel(panel)
 
         local communityClubs = {}
         for _, clubInfo in ipairs(clubs) do
-            if clubInfo.name
+            if type(clubInfo.name) == "string"
                and (clubInfo.clubType == Enum.ClubType.Character or clubInfo.clubType == Enum.ClubType.BattleNet) then
                 table.insert(communityClubs, clubInfo)
             end

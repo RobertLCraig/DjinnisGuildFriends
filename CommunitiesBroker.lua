@@ -115,8 +115,9 @@ function CommunitiesBroker:UpdateData()
 
     for _, clubInfo in ipairs(clubs) do
         -- Only character and BNet communities (skip guild — handled by GuildBroker)
-        -- Also skip clubs with nil name (data not yet loaded from server)
-        if clubInfo.name
+        -- Skip clubs whose data hasn't loaded yet — unloaded fields return a
+        -- WoW "secret" protected value, which is truthy but not a string.
+        if type(clubInfo.name) == "string"
            and (clubInfo.clubType == Enum.ClubType.Character or clubInfo.clubType == Enum.ClubType.BattleNet)
            and self:IsClubEnabled(clubInfo.clubId) then
 
