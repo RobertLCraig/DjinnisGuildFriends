@@ -29,6 +29,7 @@ ns.defaults = {
         tooltipMaxHeight = 400,
         rowSpacing = 4,
         groupBy = "none",
+        groupBy2 = "none",
         groupCollapsed = {},
         clickActions = {
             leftClick = "whisper",
@@ -50,6 +51,7 @@ ns.defaults = {
         tooltipMaxHeight = 500,
         rowSpacing = 4,
         groupBy = "none",
+        groupBy2 = "none",
         groupCollapsed = {},
         clickActions = {
             leftClick = "whisper",
@@ -58,6 +60,12 @@ ns.defaults = {
             shiftRightClick = "who",
             middleClick = "openguild",
         },
+    },
+    global = {
+        customUrl1 = "",
+        customUrl2 = "",
+        tagSeparator = "#",
+        noteShowInAllGroups = true,
     },
     communities = {
         labelFormat = "Communities: <online>",
@@ -69,6 +77,9 @@ ns.defaults = {
         tooltipWidth = 480,
         tooltipMaxHeight = 500,
         rowSpacing = 4,
+        groupBy = "community",
+        groupBy2 = "none",
+        groupCollapsed = {},
         disabledClubs = {},
         clickActions = {
             leftClick = "whisper",
@@ -82,14 +93,19 @@ ns.defaults = {
 
 -- Available click actions
 ns.ACTION_VALUES = {
-    whisper         = "Whisper",
-    invite          = "Invite to Group",
-    who             = "/who Lookup",
-    copyname        = "Copy Name to Chat",
-    openfriends     = "Open Friends List",
-    openguild       = "Open Guild Roster",
-    opencommunities = "Open Communities",
-    none            = "None",
+    whisper          = "Whisper",
+    invite           = "Invite to Group",
+    who              = "/who Lookup",
+    copyname         = "Copy Name to Chat",
+    copyarmory       = "Copy Armory Link",
+    copyraiderio     = "Copy Raider.IO Link",
+    copywarcraftlogs = "Copy WarcraftLogs Link",
+    copyurl1         = "Copy Custom URL 1",
+    copyurl2         = "Copy Custom URL 2",
+    openfriends      = "Open Friends List",
+    openguild        = "Open Guild Roster",
+    opencommunities  = "Open Communities",
+    none             = "None",
 }
 
 -- Grouping modes
@@ -105,7 +121,70 @@ ns.GUILD_GROUP_VALUES = {
     rank  = "Guild Rank",
     level = "Level Bracket",
     zone  = "Same Zone",
+    note  = "Member Note (#tags)",
 }
+
+ns.COMMUNITIES_GROUP_VALUES = {
+    community = "Community",
+    none      = "No Grouping",
+    zone      = "Same Zone",
+    note      = "Member Note (#tags)",
+}
+
+---------------------------------------------------------------------------
+-- Shared tooltip constants
+---------------------------------------------------------------------------
+
+ns.ROW_HEIGHT      = 16
+ns.TOOLTIP_PADDING = 10
+ns.HEADER_HEIGHT   = 24
+ns.FIXED_TOP       = ns.TOOLTIP_PADDING + ns.HEADER_HEIGHT + 20   -- header + column headers row
+ns.FIXED_BOTTOM    = ns.TOOLTIP_PADDING * 2 + 18                  -- hint bar + padding
+ns.HIDE_DELAY      = 0.15
+
+---------------------------------------------------------------------------
+-- Shared sort functions
+---------------------------------------------------------------------------
+
+ns.SORT_FUNCTIONS = {
+    name = function(a, b) return a.name < b.name end,
+    class = function(a, b)
+        local ac = a.classFile or ""
+        local bc = b.classFile or ""
+        if ac == bc then return a.name < b.name end
+        return ac < bc
+    end,
+    level = function(a, b)
+        if a.level == b.level then return a.name < b.name end
+        return a.level < b.level
+    end,
+    zone = function(a, b)
+        if a.area == b.area then return a.name < b.name end
+        return a.area < b.area
+    end,
+    rank = function(a, b)
+        if a.rankIndex == b.rankIndex then return a.name < b.name end
+        return a.rankIndex < b.rankIndex
+    end,
+    status = function(a, b)
+        local sa = a.afk and 2 or a.dnd and 3 or 1
+        local sb = b.afk and 2 or b.dnd and 3 or 1
+        if sa == sb then return a.name < b.name end
+        return sa < sb
+    end,
+}
+
+--- Sort a list using the db settings for a given section
+function DGF:SortList(list, db, extraSortFuncs)
+    local funcs = extraSortFuncs or ns.SORT_FUNCTIONS
+    local sortFunc = funcs[db.sortBy] or ns.SORT_FUNCTIONS[db.sortBy] or ns.SORT_FUNCTIONS.name
+    local ascending = db.sortAscending ~= false
+    if ascending then
+        table.sort(list, sortFunc)
+    else
+        table.sort(list, function(a, b) return sortFunc(b, a) end)
+    end
+end
 
 ---------------------------------------------------------------------------
 -- Saved variables helpers
@@ -129,18 +208,23 @@ end
 -- Utility functions
 ---------------------------------------------------------------------------
 
---- Parse #GroupName tags from a note string (FriendGroups-compatible)
+--- Parse tags from a note string using the configured separator (default "#")
 function DGF:ParseNoteGroups(note)
     if not note or note == "" then return {} end
+    local sep = (ns.db and ns.db.global and ns.db.global.tagSeparator) or "#"
     local groups = {}
-    local tagSection = note:match("#.+")
-    if tagSection then
-        for tag in tagSection:gmatch("[^#]+") do
-            local trimmed = tag:match("^%s*(.-)%s*$")
-            if trimmed and trimmed ~= "" then
-                table.insert(groups, trimmed)
-            end
+    local start = note:find(sep, 1, true)
+    if not start then return groups end
+    local pos = start
+    while pos do
+        pos = pos + #sep
+        local nextSep = note:find(sep, pos, true)
+        local chunk = note:sub(pos, nextSep and (nextSep - 1) or #note)
+        local trimmed = chunk:match("^%s*(.-)%s*$")
+        if trimmed and trimmed ~= "" then
+            table.insert(groups, trimmed)
         end
+        pos = nextSep
     end
     return groups
 end
@@ -238,6 +322,255 @@ end
 --- Print a message to chat
 function DGF:Print(msg)
     print("|cff33ff99" .. addonName .. "|r: " .. msg)
+end
+
+---------------------------------------------------------------------------
+-- Shared tooltip helpers
+---------------------------------------------------------------------------
+
+--- Create or return a cached group header FontString
+function DGF:GetOrCreateGroupHeader(parent, name)
+    if not parent.groupHeaders then parent.groupHeaders = {} end
+    if parent.groupHeaders[name] then return parent.groupHeaders[name] end
+
+    local hdr = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    hdr:SetJustifyH("LEFT")
+    hdr:SetHeight(14)
+    hdr:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
+    parent.groupHeaders[name] = hdr
+    return hdr
+end
+
+--- Resolve a click action from a button+modifier combo
+function DGF:ResolveClickAction(button, clickActions)
+    if button == "LeftButton" and IsShiftKeyDown() then
+        return clickActions.shiftLeftClick
+    elseif button == "RightButton" and IsShiftKeyDown() then
+        return clickActions.shiftRightClick
+    elseif button == "LeftButton" then
+        return clickActions.leftClick
+    elseif button == "RightButton" then
+        return clickActions.rightClick
+    elseif button == "MiddleButton" then
+        return clickActions.middleClick
+    end
+end
+
+---------------------------------------------------------------------------
+-- Shared grouping helpers
+---------------------------------------------------------------------------
+
+-- Zone grouping: assigns members to "Same Zone: ..." or their zone name
+local function GroupByZone(member, playerZone)
+    if member.area == playerZone and playerZone ~= "" then
+        return { "Same Zone: " .. playerZone }
+    end
+    return { member.area ~= "" and member.area or "Unknown" }
+end
+
+-- Note grouping: parses tags from notes field
+local function GroupByNote(member)
+    local tags = DGF:ParseNoteGroups(member.notes)
+    if #tags > 0 then
+        local showAll = not ns.db or not ns.db.global or ns.db.global.noteShowInAllGroups ~= false
+        if showAll then return tags end
+        return { tags[1] }
+    end
+    return { "Ungrouped" }
+end
+
+--- Shared group-order sort — handles zone and note modes
+function DGF:SortGroupOrder(order, groupBy, groups)
+    if groupBy == "zone" then
+        table.sort(order, function(a, b)
+            local aLocal = a:find("^Same Zone")
+            local bLocal = b:find("^Same Zone")
+            if aLocal and not bLocal then return true end
+            if bLocal and not aLocal then return false end
+            return a < b
+        end)
+    elseif groupBy == "note" then
+        table.sort(order, function(a, b)
+            if a == "Ungrouped" then return false end
+            if b == "Ungrouped" then return true end
+            return a < b
+        end)
+    else
+        table.sort(order)
+    end
+end
+
+--- Assign members to groups and build ordering. `extraHandler` receives
+--- (member, groupBy, playerZone) and returns a groupNames list for
+--- broker-specific modes, or nil to fall through to the shared zone/note logic.
+function DGF:BuildGroups(members, groupBy, extraHandler)
+    if groupBy == "none" then return {}, {} end
+
+    local groups   = {}
+    local groupSet = {}
+    local playerZone = GetRealZoneText() or ""
+
+    for _, member in ipairs(members) do
+        local groupNames
+
+        if extraHandler then
+            groupNames = extraHandler(member, groupBy, playerZone)
+        end
+
+        if not groupNames then
+            if groupBy == "zone" then
+                groupNames = GroupByZone(member, playerZone)
+            elseif groupBy == "note" then
+                groupNames = GroupByNote(member)
+            else
+                groupNames = { "Other" }
+            end
+        end
+
+        for _, gn in ipairs(groupNames) do
+            if not groups[gn] then
+                groups[gn] = {}
+                groupSet[gn] = true
+            end
+            table.insert(groups[gn], member)
+        end
+    end
+
+    local order = {}
+    for name in pairs(groupSet) do
+        table.insert(order, name)
+    end
+
+    self:SortGroupOrder(order, groupBy, groups)
+    return groups, order
+end
+
+---------------------------------------------------------------------------
+-- Shared click-action execution
+---------------------------------------------------------------------------
+
+--- Execute a common click action. Returns true if handled.
+--- `charName`, `realmName` are used for URL actions.
+--- `fullName` is the Character-Realm name for whisper/invite/who.
+--- For BNet friends, pass the optional bnet table { accountName, battleTag, gameAccountID }.
+function DGF:ExecuteAction(action, charName, realmName, fullName, bnet, tooltipFrame)
+    if action == "whisper" then
+        if tooltipFrame then tooltipFrame:Hide() end
+        if bnet and bnet.accountName then
+            local tellName = bnet.accountName
+            if tellName == "" then
+                tellName = bnet.battleTag and bnet.battleTag:match("^([^#]+)") or charName
+            end
+            if ChatFrameUtil and ChatFrameUtil.SendBNetTell then
+                ChatFrameUtil.SendBNetTell(tellName)
+            elseif ChatFrame_SendBNetTell then
+                ChatFrame_SendBNetTell(tellName)
+            else
+                ChatFrameUtil.OpenChat("/w " .. tellName .. " ")
+            end
+        elseif fullName and fullName ~= "" then
+            if ChatFrameUtil and ChatFrameUtil.SendTell then
+                ChatFrameUtil.SendTell(fullName)
+            elseif ChatFrame_SendTell then
+                ChatFrame_SendTell(fullName)
+            else
+                ChatFrameUtil.OpenChat("/w " .. fullName .. " ")
+            end
+        end
+        return true
+
+    elseif action == "invite" then
+        if bnet and bnet.gameAccountID then
+            BNInviteFriend(bnet.gameAccountID)
+        elseif fullName and fullName ~= "" then
+            C_PartyInfo.InviteUnit(fullName)
+        end
+
+    elseif action == "who" then
+        local query = fullName or ""
+        if bnet and realmName and realmName ~= "" and charName then
+            query = charName .. "-" .. realmName
+        end
+        if query ~= "" then C_FriendList.SendWho(query) end
+
+    elseif action == "copyname" then
+        local copyName = fullName or charName or ""
+        if copyName ~= "" then
+            if not ChatFrame1EditBox:IsShown() then
+                ChatFrameUtil.OpenChat("")
+            end
+            ChatFrame1EditBox:Insert(copyName)
+        end
+
+    elseif action == "copyarmory" or action == "copyraiderio" or action == "copywarcraftlogs" then
+        if charName and charName ~= "" and realmName and realmName ~= "" then
+            local urlType = (action == "copyarmory") and "armory" or (action == "copyraiderio") and "raiderio" or "warcraftlogs"
+            ns.CopyURL(ns.GetCharacterURL(charName, realmName, urlType))
+        end
+
+    elseif action == "copyurl1" or action == "copyurl2" then
+        if charName and charName ~= "" and realmName and realmName ~= "" then
+            local template = (action == "copyurl1") and ns.db.global.customUrl1 or ns.db.global.customUrl2
+            local url = ns.GetCustomURL(template, charName, realmName)
+            if url then ns.CopyURL(url) end
+        end
+
+    elseif action == "openfriends" then
+        ToggleFriendsFrame()
+    elseif action == "openguild" then
+        ToggleGuildFrame()
+    elseif action == "opencommunities" then
+        ToggleCommunitiesFrame()
+    end
+
+    if tooltipFrame then tooltipFrame:Hide() end
+end
+
+---------------------------------------------------------------------------
+-- URL helpers
+---------------------------------------------------------------------------
+
+local ARMORY_LOCALE = { us="en-us", eu="en-gb", kr="ko-kr", tw="zh-tw", cn="zh-cn" }
+
+--- Convert a realm name to a URL-safe slug (lowercase, no apostrophes, spaces → hyphens)
+local function RealmSlug(realmName)
+    return (realmName:lower():gsub("'", ""):gsub("%s+", "-"))
+end
+
+--- Build an Armory, Raider.IO, or WarcraftLogs URL for a character
+function ns.GetCharacterURL(charName, realmName, urlType)
+    local region = (GetCurrentRegionName and GetCurrentRegionName() or "US"):lower()
+    local slug   = RealmSlug(realmName)
+    local name   = charName:lower()
+    if urlType == "armory" then
+        local locale = ARMORY_LOCALE[region] or "en-us"
+        return ("https://worldofwarcraft.blizzard.com/%s/character/%s/%s/%s"):format(locale, region, slug, name)
+    elseif urlType == "warcraftlogs" then
+        return ("https://www.warcraftlogs.com/character/%s/%s/%s"):format(region, slug, name)
+    else -- raiderio
+        return ("https://raider.io/characters/%s/%s/%s"):format(region, slug, name)
+    end
+end
+
+--- Expand a custom URL template: replaces <name>, <realm>, <region>
+function ns.GetCustomURL(template, charName, realmName)
+    if not template or template == "" then return nil end
+    local region = (GetCurrentRegionName and GetCurrentRegionName() or "US"):lower()
+    local slug   = RealmSlug(realmName)
+    return (template:gsub("<name>", charName:lower()):gsub("<realm>", slug):gsub("<region>", region))
+end
+
+--- Copy a URL: uses C_Clipboard if available, otherwise inserts into chat input
+function ns.CopyURL(url)
+    if C_Clipboard and C_Clipboard.SetText then
+        C_Clipboard.SetText(url)
+        ns.addon:Print("Copied: " .. url)
+    else
+        if not ChatFrame1EditBox:IsShown() then
+            ChatFrameUtil.OpenChat("")
+        end
+        ChatFrame1EditBox:Insert(url)
+    end
 end
 
 ---------------------------------------------------------------------------

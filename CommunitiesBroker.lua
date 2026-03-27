@@ -15,12 +15,11 @@ CommunitiesBroker.totalOnline = 0
 
 local tooltipFrame = nil
 local rowPool = {}
-local ROW_HEIGHT = 16
-local TOOLTIP_PADDING = 10
-local HEADER_HEIGHT = 24
-
-local FIXED_TOP    = TOOLTIP_PADDING + HEADER_HEIGHT + 20  -- 54px: header + col headers row
-local FIXED_BOTTOM = TOOLTIP_PADDING * 2 + 18              -- 38px: hint bar + padding
+local ROW_HEIGHT      = ns.ROW_HEIGHT
+local TOOLTIP_PADDING = ns.TOOLTIP_PADDING
+local HEADER_HEIGHT   = ns.HEADER_HEIGHT
+local FIXED_TOP       = ns.FIXED_TOP
+local FIXED_BOTTOM    = ns.FIXED_BOTTOM
 
 ---------------------------------------------------------------------------
 -- LDB Data Object
@@ -66,7 +65,7 @@ function CommunitiesBroker:Init()
     eventFrame:RegisterEvent("CLUB_ADDED")
     eventFrame:RegisterEvent("CLUB_REMOVED")
     eventFrame:RegisterEvent("CLUB_STREAMS_LOADED")
-    eventFrame:RegisterEvent("INITIAL_CLUB_DATA_LOADED")
+    eventFrame:RegisterEvent("CLUB_MEMBER_ROLE_UPDATED")
 end
 
 function CommunitiesBroker:OnPlayerEnteringWorld()
@@ -109,21 +108,25 @@ end
 
 function CommunitiesBroker:UpdateData()
     local db = ns.db.communities
-    local clubs = C_Club.GetSubscribedClubs() or {}
+    local clubs = C_Club.GetSubscribedClubs()
+    if type(clubs) ~= "table" then clubs = {} end
     local totalOnline = 0
     local clubsData = {}
 
     for _, clubInfo in ipairs(clubs) do
         -- Only character and BNet communities (skip guild — handled by GuildBroker)
-        if (clubInfo.clubType == Enum.ClubType.Character or clubInfo.clubType == Enum.ClubType.BattleNet)
+        -- Also skip clubs with nil name (data not yet loaded from server)
+        if clubInfo.name
+           and (clubInfo.clubType == Enum.ClubType.Character or clubInfo.clubType == Enum.ClubType.BattleNet)
            and self:IsClubEnabled(clubInfo.clubId) then
 
-            local memberIds = C_Club.GetClubMembers(clubInfo.clubId) or {}
+            local memberIds = C_Club.GetClubMembers(clubInfo.clubId)
+            if type(memberIds) ~= "table" then memberIds = {} end
             local onlineMembers = {}
 
             for _, memberId in ipairs(memberIds) do
                 local mInfo = C_Club.GetMemberInfo(clubInfo.clubId, memberId)
-                if mInfo and IsPresenceOnline(mInfo.presence) then
+                if type(mInfo) == "table" and IsPresenceOnline(mInfo.presence) then
                     local classFile = ClassFileFromID(mInfo.classID)
                     local memberName = mInfo.name or "Unknown"
 
@@ -146,7 +149,7 @@ function CommunitiesBroker:UpdateData()
                         isMobile    = (mInfo.presence == Enum.ClubMemberPresence.OnlineMobile),
                         isSelf      = mInfo.isSelf,
                         clubId      = clubInfo.clubId,
-                        clubName    = clubInfo.name,
+                        clubName    = clubInfo.name or "Unknown",
                     })
                 end
             end
@@ -176,36 +179,8 @@ end
 -- Sorting
 ---------------------------------------------------------------------------
 
-local SORT_FUNCTIONS = {
-    name = function(a, b) return a.name < b.name end,
-    class = function(a, b)
-        local ac = a.classFile or ""
-        local bc = b.classFile or ""
-        if ac == bc then return a.name < b.name end
-        return ac < bc
-    end,
-    level = function(a, b)
-        if a.level == b.level then return a.name < b.name end
-        return a.level < b.level
-    end,
-    zone = function(a, b)
-        if a.area == b.area then return a.name < b.name end
-        return a.area < b.area
-    end,
-}
-
 function CommunitiesBroker:SortMembers(members)
-    local db = ns.db.communities
-    local sortFunc = SORT_FUNCTIONS[db.sortBy] or SORT_FUNCTIONS.name
-    local ascending = db.sortAscending
-
-    table.sort(members, function(a, b)
-        if ascending then
-            return sortFunc(a, b)
-        else
-            return sortFunc(b, a)
-        end
-    end)
+    DGF:SortList(members, ns.db.communities)
 end
 
 ---------------------------------------------------------------------------
@@ -445,6 +420,7 @@ function CommunitiesBroker:PopulateTooltip()
 
     local rowSpacing = db.rowSpacing or 4
     local rowStep = ROW_HEIGHT + rowSpacing
+    local groupBy = db.groupBy or "community"
     local yOffset = 0
     local rowIdx = 0
 
@@ -454,50 +430,130 @@ function CommunitiesBroker:PopulateTooltip()
         table.insert(sortedClubs, data)
     end
     table.sort(sortedClubs, function(a, b)
-        return a.info.name < b.info.name
+        return (a.info.name or "") < (b.info.name or "")
     end)
+
+    local function RenderMember(member)
+        rowIdx = rowIdx + 1
+        local row = GetOrCreateRow(sc, rowIdx)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", sc, "TOPLEFT", 0, yOffset)
+        row.memberData = member
+
+        local status = ""
+        if member.afk then
+            status = "|cffffcc00[AFK]|r "
+        elseif member.dnd then
+            status = "|cffff0000[DND]|r "
+        end
+
+        if useClassColors and member.classFile then
+            row.nameText:SetText(status .. DGF:ClassColorText(member.name, member.classFile))
+        else
+            row.nameText:SetText(status .. member.name)
+        end
+
+        row.levelText:SetText(member.level > 0 and tostring(member.level) or "")
+        row.zoneText:SetText(DGF:ColorText(member.area, 0.63, 0.82, 1))
+        row.noteText:SetText(member.notes or "")
+
+        yOffset = yOffset - rowStep
+    end
 
     local hasAnyMembers = false
 
-    for _, clubData in ipairs(sortedClubs) do
-        local members = clubData.members
-        if #members > 0 then
-            hasAnyMembers = true
+    local groupBy2 = db.groupBy2 or "none"
 
-            -- Community header
-            yOffset = yOffset - 4
-            local hdr = self:GetOrCreateGroupHeader(sc, clubData.info.name)
-            hdr:ClearAllPoints()
-            hdr:SetPoint("TOPLEFT", sc, "TOPLEFT", 0, yOffset)
-            hdr:SetText(DGF:ColorText(clubData.info.name .. " (" .. #members .. ")", 0.4, 0.78, 1))
-            hdr:Show()
-            yOffset = yOffset - 16
+    if groupBy == "community" then
+        for _, clubData in ipairs(sortedClubs) do
+            local members = clubData.members
+            if #members > 0 then
+                hasAnyMembers = true
+                yOffset = yOffset - 4
+                local clubName = clubData.info.name or "Unknown"
+                local hdr = self:GetOrCreateGroupHeader(sc, clubName)
+                hdr:ClearAllPoints()
+                hdr:SetPoint("TOPLEFT", sc, "TOPLEFT", 0, yOffset)
+                hdr:SetText(DGF:ColorText(clubName .. " (" .. #members .. ")", 0.4, 0.78, 1))
+                hdr:Show()
+                yOffset = yOffset - 16
 
-            for _, member in ipairs(members) do
-                rowIdx = rowIdx + 1
-                local row = GetOrCreateRow(sc, rowIdx)
-                row:ClearAllPoints()
-                row:SetPoint("TOPLEFT", sc, "TOPLEFT", 0, yOffset)
-                row.memberData = member
-
-                local status = ""
-                if member.afk then
-                    status = "|cffffcc00[AFK]|r "
-                elseif member.dnd then
-                    status = "|cffff0000[DND]|r "
-                end
-
-                if useClassColors and member.classFile then
-                    row.nameText:SetText(status .. DGF:ClassColorText(member.name, member.classFile))
+                if groupBy2 ~= "none" and groupBy2 ~= "community" then
+                    local subGroups, subOrder = self:BuildGroups(members, groupBy2)
+                    for _, subName in ipairs(subOrder) do
+                        local subMembers = subGroups[subName]
+                        if subMembers and #subMembers > 0 then
+                            yOffset = yOffset - 2
+                            local subHdr = DGF:GetOrCreateGroupHeader(sc, clubName .. "|" .. subName)
+                            subHdr:ClearAllPoints()
+                            subHdr:SetPoint("TOPLEFT", sc, "TOPLEFT", 16, yOffset)
+                            subHdr:SetText(DGF:ColorText(subName .. " (" .. #subMembers .. ")", 0.8, 0.8, 0.6))
+                            subHdr:Show()
+                            yOffset = yOffset - 14
+                            for _, member in ipairs(subMembers) do
+                                RenderMember(member)
+                            end
+                        end
+                    end
                 else
-                    row.nameText:SetText(status .. member.name)
+                    for _, member in ipairs(members) do
+                        RenderMember(member)
+                    end
                 end
+            end
+        end
+    else
+        -- Flatten members from all clubs, re-sort, then group
+        local allMembers = {}
+        for _, clubData in ipairs(sortedClubs) do
+            for _, m in ipairs(clubData.members) do
+                table.insert(allMembers, m)
+                hasAnyMembers = true
+            end
+        end
+        self:SortMembers(allMembers)
 
-                row.levelText:SetText(member.level > 0 and tostring(member.level) or "")
-                row.zoneText:SetText(DGF:ColorText(member.area, 0.63, 0.82, 1))
-                row.noteText:SetText(member.notes or "")
-
-                yOffset = yOffset - rowStep
+        if groupBy == "none" then
+            for _, member in ipairs(allMembers) do
+                RenderMember(member)
+            end
+        else
+            local groups, groupOrder = self:BuildGroups(allMembers, groupBy)
+            for _, groupName in ipairs(groupOrder) do
+                local groupMembers = groups[groupName]
+                if groupMembers and #groupMembers > 0 then
+                    yOffset = yOffset - 4
+                    local hdr = self:GetOrCreateGroupHeader(sc, groupName)
+                    hdr:ClearAllPoints()
+                    hdr:SetPoint("TOPLEFT", sc, "TOPLEFT", 0, yOffset)
+                    hdr:SetText(DGF:ColorText(groupName .. " (" .. #groupMembers .. ")", 1, 0.82, 0))
+                    hdr:Show()
+                    yOffset = yOffset - 16
+                    if not db.groupCollapsed[groupName] then
+                        if groupBy2 ~= "none" and groupBy2 ~= groupBy then
+                            local subGroups, subOrder = self:BuildGroups(groupMembers, groupBy2)
+                            for _, subName in ipairs(subOrder) do
+                                local subMembers = subGroups[subName]
+                                if subMembers and #subMembers > 0 then
+                                    yOffset = yOffset - 2
+                                    local subHdr = DGF:GetOrCreateGroupHeader(sc, groupName .. "|" .. subName)
+                                    subHdr:ClearAllPoints()
+                                    subHdr:SetPoint("TOPLEFT", sc, "TOPLEFT", 16, yOffset)
+                                    subHdr:SetText(DGF:ColorText(subName .. " (" .. #subMembers .. ")", 0.8, 0.8, 0.6))
+                                    subHdr:Show()
+                                    yOffset = yOffset - 14
+                                    for _, member in ipairs(subMembers) do
+                                        RenderMember(member)
+                                    end
+                                end
+                            end
+                        else
+                            for _, member in ipairs(groupMembers) do
+                                RenderMember(member)
+                            end
+                        end
+                    end
+                end
             end
         end
     end
@@ -538,15 +594,15 @@ end
 ---------------------------------------------------------------------------
 
 function CommunitiesBroker:GetOrCreateGroupHeader(parent, name)
-    if not parent.groupHeaders then parent.groupHeaders = {} end
-    if parent.groupHeaders[name] then return parent.groupHeaders[name] end
+    return DGF:GetOrCreateGroupHeader(parent, name)
+end
 
-    local hdr = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    hdr:SetJustifyH("LEFT")
-    hdr:SetHeight(14)
-    hdr:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
-    parent.groupHeaders[name] = hdr
-    return hdr
+function CommunitiesBroker:BuildGroups(members, groupBy)
+    return DGF:BuildGroups(members, groupBy, function(member, mode)
+        if mode == "community" then
+            return { member.clubName or "Unknown" }
+        end
+    end)
 end
 
 ---------------------------------------------------------------------------
@@ -557,7 +613,7 @@ CommunitiesBroker.hideTimer = nil
 
 function CommunitiesBroker:StartTooltipHideTimer()
     self:CancelTooltipHideTimer()
-    self.hideTimer = C_Timer.NewTimer(0.15, function()
+    self.hideTimer = C_Timer.NewTimer(ns.HIDE_DELAY, function()
         if tooltipFrame then tooltipFrame:Hide() end
         self.hideTimer = nil
     end)
@@ -578,21 +634,7 @@ function CommunitiesBroker:OnRowClick(row, button)
     local member = row.memberData
     if not member then return end
 
-    local db = ns.db.communities
-    local action
-
-    if button == "LeftButton" and IsShiftKeyDown() then
-        action = db.clickActions.shiftLeftClick
-    elseif button == "RightButton" and IsShiftKeyDown() then
-        action = db.clickActions.shiftRightClick
-    elseif button == "LeftButton" then
-        action = db.clickActions.leftClick
-    elseif button == "RightButton" then
-        action = db.clickActions.rightClick
-    elseif button == "MiddleButton" then
-        action = db.clickActions.middleClick
-    end
-
+    local action = DGF:ResolveClickAction(button, ns.db.communities.clickActions)
     if action and action ~= "none" then
         self:ExecuteAction(action, member)
     end
@@ -600,49 +642,6 @@ end
 
 function CommunitiesBroker:ExecuteAction(action, member)
     self:CancelTooltipHideTimer()
-
-    local name = member.fullName or member.name
-
-    if action == "whisper" then
-        if tooltipFrame then tooltipFrame:Hide() end
-        if name and name ~= "" then
-            if ChatFrameUtil and ChatFrameUtil.SendTell then
-                ChatFrameUtil.SendTell(name)
-            elseif ChatFrame_SendTell then
-                ChatFrame_SendTell(name)
-            else
-                ChatFrameUtil.OpenChat("/w " .. name .. " ")
-            end
-        end
-        return
-
-    elseif action == "invite" then
-        if name and name ~= "" then
-            C_PartyInfo.InviteUnit(name)
-        end
-
-    elseif action == "who" then
-        if name and name ~= "" then
-            C_FriendList.SendWho(name)
-        end
-
-    elseif action == "copyname" then
-        if name and name ~= "" then
-            if not ChatFrame1EditBox:IsShown() then
-                ChatFrameUtil.OpenChat("")
-            end
-            ChatFrame1EditBox:Insert(name)
-        end
-
-    elseif action == "opencommunities" then
-        ToggleCommunitiesFrame()
-
-    elseif action == "openfriends" then
-        ToggleFriendsFrame()
-
-    elseif action == "openguild" then
-        ToggleGuildFrame()
-    end
-
-    if tooltipFrame then tooltipFrame:Hide() end
+    local realmName = member.fullName and member.fullName:match("%-(.+)$") or GetRealmName()
+    DGF:ExecuteAction(action, member.name, realmName, member.fullName or member.name, nil, tooltipFrame)
 end

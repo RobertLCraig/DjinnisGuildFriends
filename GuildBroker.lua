@@ -16,12 +16,11 @@ GuildBroker.guildName = ""
 
 local tooltipFrame = nil
 local rowPool = {}
-local ROW_HEIGHT = 16
-local TOOLTIP_PADDING = 10
-local HEADER_HEIGHT = 24
-
-local FIXED_TOP    = TOOLTIP_PADDING + HEADER_HEIGHT + 20  -- 54px: header + col headers row (overridden in PopulateTooltip when MOTD present)
-local FIXED_BOTTOM = TOOLTIP_PADDING * 2 + 18              -- 38px: hint bar + padding
+local ROW_HEIGHT      = ns.ROW_HEIGHT
+local TOOLTIP_PADDING = ns.TOOLTIP_PADDING
+local HEADER_HEIGHT   = ns.HEADER_HEIGHT
+local FIXED_TOP       = ns.FIXED_TOP
+local FIXED_BOTTOM    = ns.FIXED_BOTTOM
 
 local STATUS_STRINGS = {
     [0] = "",
@@ -162,44 +161,8 @@ end
 -- Sorting
 ---------------------------------------------------------------------------
 
-local SORT_FUNCTIONS = {
-    name = function(a, b) return a.name < b.name end,
-    class = function(a, b)
-        if a.classFile == b.classFile then return a.name < b.name end
-        return a.classFile < b.classFile
-    end,
-    level = function(a, b)
-        if a.level == b.level then return a.name < b.name end
-        return a.level < b.level
-    end,
-    zone = function(a, b)
-        if a.area == b.area then return a.name < b.name end
-        return a.area < b.area
-    end,
-    rank = function(a, b)
-        if a.rankIndex == b.rankIndex then return a.name < b.name end
-        return a.rankIndex < b.rankIndex
-    end,
-    status = function(a, b)
-        local sa = a.afk and 2 or a.dnd and 3 or 1
-        local sb = b.afk and 2 or b.dnd and 3 or 1
-        if sa == sb then return a.name < b.name end
-        return sa < sb
-    end,
-}
-
 function GuildBroker:SortMembers(members)
-    local db = ns.db.guild
-    local sortFunc = SORT_FUNCTIONS[db.sortBy] or SORT_FUNCTIONS.name
-    local ascending = db.sortAscending
-
-    table.sort(members, function(a, b)
-        if ascending then
-            return sortFunc(a, b)
-        else
-            return sortFunc(b, a)
-        end
-    end)
+    DGF:SortList(members, ns.db.guild)
 end
 
 ---------------------------------------------------------------------------
@@ -545,6 +508,7 @@ function GuildBroker:PopulateTooltip()
             RenderMember(member)
         end
     else
+        local groupBy2 = db.groupBy2 or "none"
         for _, groupName in ipairs(groupOrder) do
             local groupMembers = groups[groupName]
             if groupMembers and #groupMembers > 0 then
@@ -557,8 +521,27 @@ function GuildBroker:PopulateTooltip()
                 yOffset = yOffset - 16
 
                 if not db.groupCollapsed[groupName] then
-                    for _, member in ipairs(groupMembers) do
-                        RenderMember(member)
+                    if groupBy2 ~= "none" and groupBy2 ~= groupBy then
+                        local subGroups, subOrder = self:BuildGroups(groupMembers, groupBy2)
+                        for _, subName in ipairs(subOrder) do
+                            local subMembers = subGroups[subName]
+                            if subMembers and #subMembers > 0 then
+                                yOffset = yOffset - 2
+                                local subHdr = DGF:GetOrCreateGroupHeader(sc, groupName .. "|" .. subName)
+                                subHdr:ClearAllPoints()
+                                subHdr:SetPoint("TOPLEFT", sc, "TOPLEFT", 16, yOffset)
+                                subHdr:SetText(DGF:ColorText(subName .. " (" .. #subMembers .. ")", 0.8, 0.8, 0.6))
+                                subHdr:Show()
+                                yOffset = yOffset - 14
+                                for _, member in ipairs(subMembers) do
+                                    RenderMember(member)
+                                end
+                            end
+                        end
+                    else
+                        for _, member in ipairs(groupMembers) do
+                            RenderMember(member)
+                        end
                     end
                 end
             end
@@ -602,63 +585,31 @@ end
 ---------------------------------------------------------------------------
 
 function GuildBroker:GetOrCreateGroupHeader(parent, name)
-    if not parent.groupHeaders then parent.groupHeaders = {} end
-    if parent.groupHeaders[name] then return parent.groupHeaders[name] end
-
-    local hdr = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    hdr:SetJustifyH("LEFT")
-    hdr:SetHeight(14)
-    hdr:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
-    parent.groupHeaders[name] = hdr
-    return hdr
+    return DGF:GetOrCreateGroupHeader(parent, name)
 end
 
 function GuildBroker:BuildGroups(members, groupBy)
-    if groupBy == "none" then return {}, {} end
-
-    local groups = {}
-    local groupSet = {}
-    local playerZone = GetRealZoneText() or ""
-
-    for _, member in ipairs(members) do
-        local groupName
-
-        if groupBy == "rank" then
-            groupName = member.rank or "Unknown"
-        elseif groupBy == "level" then
+    local groups, order = DGF:BuildGroups(members, groupBy, function(member, mode)
+        if mode == "rank" then
+            return { member.rank or "Unknown" }
+        elseif mode == "level" then
             local lvl = member.level or 0
-            if     lvl >= 80 then groupName = "80+"
-            elseif lvl >= 70 then groupName = "70-79"
-            elseif lvl >= 60 then groupName = "60-69"
-            elseif lvl >= 50 then groupName = "50-59"
-            elseif lvl >= 40 then groupName = "40-49"
-            elseif lvl >= 30 then groupName = "30-39"
-            elseif lvl >= 20 then groupName = "20-29"
-            elseif lvl >= 10 then groupName = "10-19"
-            else                  groupName = "1-9"
+            local bracket
+            if     lvl >= 80 then bracket = "80+"
+            elseif lvl >= 70 then bracket = "70-79"
+            elseif lvl >= 60 then bracket = "60-69"
+            elseif lvl >= 50 then bracket = "50-59"
+            elseif lvl >= 40 then bracket = "40-49"
+            elseif lvl >= 30 then bracket = "30-39"
+            elseif lvl >= 20 then bracket = "20-29"
+            elseif lvl >= 10 then bracket = "10-19"
+            else                  bracket = "1-9"
             end
-        elseif groupBy == "zone" then
-            if member.area == playerZone and playerZone ~= "" then
-                groupName = "Same Zone: " .. playerZone
-            else
-                groupName = member.area ~= "" and member.area or "Unknown"
-            end
-        else
-            groupName = "Other"
+            return { bracket }
         end
+    end)
 
-        if not groups[groupName] then
-            groups[groupName] = {}
-            groupSet[groupName] = true
-        end
-        table.insert(groups[groupName], member)
-    end
-
-    local order = {}
-    for name in pairs(groupSet) do
-        table.insert(order, name)
-    end
-
+    -- Broker-specific sort overrides for rank/level
     if groupBy == "rank" then
         table.sort(order, function(a, b)
             local ai = groups[a][1] and groups[a][1].rankIndex or 99
@@ -667,16 +618,6 @@ function GuildBroker:BuildGroups(members, groupBy)
         end)
     elseif groupBy == "level" then
         table.sort(order, function(a, b) return a > b end)
-    elseif groupBy == "zone" then
-        table.sort(order, function(a, b)
-            local aLocal = a:find("^Same Zone")
-            local bLocal = b:find("^Same Zone")
-            if aLocal and not bLocal then return true end
-            if bLocal and not aLocal then return false end
-            return a < b
-        end)
-    else
-        table.sort(order)
     end
 
     return groups, order
@@ -690,7 +631,7 @@ GuildBroker.hideTimer = nil
 
 function GuildBroker:StartTooltipHideTimer()
     self:CancelTooltipHideTimer()
-    self.hideTimer = C_Timer.NewTimer(0.15, function()
+    self.hideTimer = C_Timer.NewTimer(ns.HIDE_DELAY, function()
         if tooltipFrame then tooltipFrame:Hide() end
         self.hideTimer = nil
     end)
@@ -711,21 +652,7 @@ function GuildBroker:OnRowClick(row, button)
     local member = row.memberData
     if not member then return end
 
-    local db = ns.db.guild
-    local action
-
-    if button == "LeftButton" and IsShiftKeyDown() then
-        action = db.clickActions.shiftLeftClick
-    elseif button == "RightButton" and IsShiftKeyDown() then
-        action = db.clickActions.shiftRightClick
-    elseif button == "LeftButton" then
-        action = db.clickActions.leftClick
-    elseif button == "RightButton" then
-        action = db.clickActions.rightClick
-    elseif button == "MiddleButton" then
-        action = db.clickActions.middleClick
-    end
-
+    local action = DGF:ResolveClickAction(button, ns.db.guild.clickActions)
     if action and action ~= "none" then
         self:ExecuteAction(action, member)
     end
@@ -733,49 +660,5 @@ end
 
 function GuildBroker:ExecuteAction(action, member)
     self:CancelTooltipHideTimer()
-
-    local name = member.fullName or member.name
-
-    if action == "whisper" then
-        if tooltipFrame then tooltipFrame:Hide() end
-        if name and name ~= "" then
-            if ChatFrameUtil and ChatFrameUtil.SendTell then
-                ChatFrameUtil.SendTell(name)
-            elseif ChatFrame_SendTell then
-                ChatFrame_SendTell(name)
-            else
-                ChatFrameUtil.OpenChat("/w " .. name .. " ")
-            end
-        end
-        return
-
-    elseif action == "invite" then
-        if name and name ~= "" then
-            C_PartyInfo.InviteUnit(name)
-        end
-
-    elseif action == "who" then
-        if name and name ~= "" then
-            C_FriendList.SendWho(name)
-        end
-
-    elseif action == "copyname" then
-        if name and name ~= "" then
-            if not ChatFrame1EditBox:IsShown() then
-                ChatFrameUtil.OpenChat("")
-            end
-            ChatFrame1EditBox:Insert(name)
-        end
-
-    elseif action == "openguild" then
-        ToggleGuildFrame()
-
-    elseif action == "openfriends" then
-        ToggleFriendsFrame()
-
-    elseif action == "opencommunities" then
-        ToggleCommunitiesFrame()
-    end
-
-    if tooltipFrame then tooltipFrame:Hide() end
+    DGF:ExecuteAction(action, member.name, GetRealmName(), member.fullName or member.name, nil, tooltipFrame)
 end

@@ -259,79 +259,102 @@ local function CreateScrollPanel()
 end
 
 ---------------------------------------------------------------------------
+-- Shared section builders
+---------------------------------------------------------------------------
+
+local CLICK_ACTION_KEYS = {
+    { key = "leftClick",       label = "Left Click" },
+    { key = "rightClick",      label = "Right Click" },
+    { key = "shiftLeftClick",  label = "Shift + Left Click" },
+    { key = "shiftRightClick", label = "Shift + Right Click" },
+    { key = "middleClick",     label = "Middle Click" },
+}
+
+local function AddClickActionsSection(c, r, y, dbKey)
+    y = AddHeader(c, y, "Click Actions")
+    y = AddDescription(c, y, "Configure what happens when you click on a row in the tooltip.")
+    for _, entry in ipairs(CLICK_ACTION_KEYS) do
+        y = AddDropdown(c, y, entry.label, ns.ACTION_VALUES,
+            function() return ns.db[dbKey].clickActions[entry.key] end,
+            function(v) ns.db[dbKey].clickActions[entry.key] = v end, r)
+    end
+    return y
+end
+
+---------------------------------------------------------------------------
 -- General panel
 ---------------------------------------------------------------------------
+
+--- Build a tooltip-appearance section (scale, width, spacing, max height, label format).
+--- `copyFrom` = { label, sourceKey } for the "Copy from ..." button.
+local function AddTooltipSection(c, r, y, header, labelTokens, dbKey, broker, copyFrom)
+    local db = function() return ns.db[dbKey] end
+    local refresh = function() if broker() then broker():UpdateData() end end
+
+    y = AddHeader(c, y, header)
+    y = AddEditBox(c, y, "Panel Text  (tokens: " .. labelTokens .. ")",
+        function() return db().labelFormat end,
+        function(v) db().labelFormat = v; refresh() end, r)
+    y = AddSlider(c, y, "Scale", 0.5, 2.0, 0.05,
+        function() return db().tooltipScale end,
+        function(v) db().tooltipScale = v end, r)
+    y = AddSlider(c, y, "Width", 300, 800, 10,
+        function() return db().tooltipWidth end,
+        function(v) db().tooltipWidth = v end, r)
+    y = AddSlider(c, y, "Row Spacing", 0, 16, 1,
+        function() return db().rowSpacing end,
+        function(v) db().rowSpacing = v end, r)
+    y = AddSlider(c, y, "Max Height", 100, 1000, 10,
+        function() return db().tooltipMaxHeight end,
+        function(v) db().tooltipMaxHeight = v end, r)
+    if copyFrom then
+        y = AddButton(c, y, "Copy from " .. copyFrom.label, function()
+            DGF:CopyDisplaySettings(copyFrom.key, dbKey)
+            refresh()
+            for _, cb in ipairs(r) do cb() end
+        end)
+    end
+    return y
+end
 
 local function BuildGeneralPanel(panel)
     local c = panel.content
     local r = panel.refreshCallbacks
     local y = -10
 
-    y = AddHeader(c, y, "Friends Tooltip")
-    y = AddEditBox(c, y, "Panel Text  (tokens: <online> <total> <offline>)",
-        function() return ns.db.friends.labelFormat end,
-        function(v) ns.db.friends.labelFormat = v; if ns.FriendsBroker then ns.FriendsBroker:UpdateData() end end, r)
-    y = AddSlider(c, y, "Scale", 0.5, 2.0, 0.05,
-        function() return ns.db.friends.tooltipScale end,
-        function(v) ns.db.friends.tooltipScale = v end, r)
-    y = AddSlider(c, y, "Width", 300, 800, 10,
-        function() return ns.db.friends.tooltipWidth end,
-        function(v) ns.db.friends.tooltipWidth = v end, r)
-    y = AddSlider(c, y, "Row Spacing", 0, 16, 1,
-        function() return ns.db.friends.rowSpacing end,
-        function(v) ns.db.friends.rowSpacing = v end, r)
-    y = AddSlider(c, y, "Max Height", 100, 1000, 10,
-        function() return ns.db.friends.tooltipMaxHeight end,
-        function(v) ns.db.friends.tooltipMaxHeight = v end, r)
-    y = AddButton(c, y, "Copy from Guild", function()
-        DGF:CopyDisplaySettings("guild", "friends")
-        if ns.FriendsBroker then ns.FriendsBroker:UpdateData() end
-        for _, cb in ipairs(r) do cb() end
-    end)
+    y = AddTooltipSection(c, r, y,
+        "Friends Tooltip", "<online> <total> <offline>",
+        "friends", function() return ns.FriendsBroker end,
+        { label = "Guild", key = "guild" })
 
-    y = AddHeader(c, y, "Guild Tooltip")
-    y = AddEditBox(c, y, "Panel Text  (tokens: <online> <total> <offline> <guildname>)",
-        function() return ns.db.guild.labelFormat end,
-        function(v) ns.db.guild.labelFormat = v; if ns.GuildBroker then ns.GuildBroker:UpdateData() end end, r)
-    y = AddSlider(c, y, "Scale", 0.5, 2.0, 0.05,
-        function() return ns.db.guild.tooltipScale end,
-        function(v) ns.db.guild.tooltipScale = v end, r)
-    y = AddSlider(c, y, "Width", 300, 800, 10,
-        function() return ns.db.guild.tooltipWidth end,
-        function(v) ns.db.guild.tooltipWidth = v end, r)
-    y = AddSlider(c, y, "Row Spacing", 0, 16, 1,
-        function() return ns.db.guild.rowSpacing end,
-        function(v) ns.db.guild.rowSpacing = v end, r)
-    y = AddSlider(c, y, "Max Height", 100, 1000, 10,
-        function() return ns.db.guild.tooltipMaxHeight end,
-        function(v) ns.db.guild.tooltipMaxHeight = v end, r)
-    y = AddButton(c, y, "Copy from Friends", function()
-        DGF:CopyDisplaySettings("friends", "guild")
-        if ns.GuildBroker then ns.GuildBroker:UpdateData() end
-        for _, cb in ipairs(r) do cb() end
-    end)
+    y = AddTooltipSection(c, r, y,
+        "Guild Tooltip", "<online> <total> <offline> <guildname>",
+        "guild", function() return ns.GuildBroker end,
+        { label = "Friends", key = "friends" })
 
-    y = AddHeader(c, y, "Communities Tooltip")
-    y = AddEditBox(c, y, "Panel Text  (tokens: <online>)",
-        function() return ns.db.communities.labelFormat end,
-        function(v) ns.db.communities.labelFormat = v; if ns.CommunitiesBroker then ns.CommunitiesBroker:UpdateData() end end, r)
-    y = AddSlider(c, y, "Scale", 0.5, 2.0, 0.05,
-        function() return ns.db.communities.tooltipScale end,
-        function(v) ns.db.communities.tooltipScale = v end, r)
-    y = AddSlider(c, y, "Width", 300, 800, 10,
-        function() return ns.db.communities.tooltipWidth end,
-        function(v) ns.db.communities.tooltipWidth = v end, r)
-    y = AddSlider(c, y, "Row Spacing", 0, 16, 1,
-        function() return ns.db.communities.rowSpacing end,
-        function(v) ns.db.communities.rowSpacing = v end, r)
-    y = AddSlider(c, y, "Max Height", 100, 1000, 10,
-        function() return ns.db.communities.tooltipMaxHeight end,
-        function(v) ns.db.communities.tooltipMaxHeight = v end, r)
-    y = AddButton(c, y, "Copy from Friends", function()
-        DGF:CopyDisplaySettings("friends", "communities")
-        if ns.CommunitiesBroker then ns.CommunitiesBroker:UpdateData() end
-        for _, cb in ipairs(r) do cb() end
-    end)
+    y = AddTooltipSection(c, r, y,
+        "Communities Tooltip", "<online>",
+        "communities", function() return ns.CommunitiesBroker end,
+        { label = "Friends", key = "friends" })
+
+    y = AddHeader(c, y, "Custom URL Templates")
+    y = AddDescription(c, y, "Define URL templates for the \"Copy Custom URL\" click actions. Use <name>, <realm>, and <region> as placeholders.  Example: https://www.warcraftlogs.com/character/<region>/<realm>/<name>")
+    y = AddEditBox(c, y, "Custom URL 1",
+        function() return ns.db.global.customUrl1 end,
+        function(v) ns.db.global.customUrl1 = v end, r)
+    y = AddEditBox(c, y, "Custom URL 2",
+        function() return ns.db.global.customUrl2 end,
+        function(v) ns.db.global.customUrl2 = v end, r)
+
+    y = AddHeader(c, y, "Tag Grouping")
+    y = AddDescription(c, y, "Tags in player notes are used for note-based grouping. Configure the separator character and display behavior.")
+    y = AddEditBox(c, y, "Tag Separator Character",
+        function() return ns.db.global.tagSeparator end,
+        function(v) if v ~= "" then ns.db.global.tagSeparator = v end end, r)
+    y = AddCheckbox(c, y, "Show Members in All Matching Tag Groups",
+        function() return ns.db.global.noteShowInAllGroups end,
+        function(v) ns.db.global.noteShowInAllGroups = v end, r)
+    y = AddDescription(c, y, "When enabled, members with multiple tags appear in every matching group. When disabled, only the first tag is used.")
 
     c:SetHeight(math.abs(y) + 20)
 end
@@ -363,6 +386,9 @@ local function BuildFriendsPanel(panel)
     y = AddDropdown(c, y, "Group By", ns.FRIENDS_GROUP_VALUES,
         function() return ns.db.friends.groupBy end,
         function(v) ns.db.friends.groupBy = v; if ns.FriendsBroker then ns.FriendsBroker:UpdateData() end end, r)
+    y = AddDropdown(c, y, "Then By", ns.FRIENDS_GROUP_VALUES,
+        function() return ns.db.friends.groupBy2 end,
+        function(v) ns.db.friends.groupBy2 = v; if ns.FriendsBroker then ns.FriendsBroker:UpdateData() end end, r)
 
     y = AddHeader(c, y, "Sorting")
     y = AddDropdown(c, y, "Sort By", { name = "Name", class = "Class", level = "Level", zone = "Zone", status = "Status" },
@@ -372,23 +398,7 @@ local function BuildFriendsPanel(panel)
         function() return ns.db.friends.sortAscending end,
         function(v) ns.db.friends.sortAscending = v; if ns.FriendsBroker then ns.FriendsBroker:UpdateData() end end, r)
 
-    y = AddHeader(c, y, "Click Actions")
-    y = AddDescription(c, y, "Configure what happens when you click on a friend in the tooltip.")
-    y = AddDropdown(c, y, "Left Click", ns.ACTION_VALUES,
-        function() return ns.db.friends.clickActions.leftClick end,
-        function(v) ns.db.friends.clickActions.leftClick = v end, r)
-    y = AddDropdown(c, y, "Right Click", ns.ACTION_VALUES,
-        function() return ns.db.friends.clickActions.rightClick end,
-        function(v) ns.db.friends.clickActions.rightClick = v end, r)
-    y = AddDropdown(c, y, "Shift + Left Click", ns.ACTION_VALUES,
-        function() return ns.db.friends.clickActions.shiftLeftClick end,
-        function(v) ns.db.friends.clickActions.shiftLeftClick = v end, r)
-    y = AddDropdown(c, y, "Shift + Right Click", ns.ACTION_VALUES,
-        function() return ns.db.friends.clickActions.shiftRightClick end,
-        function(v) ns.db.friends.clickActions.shiftRightClick = v end, r)
-    y = AddDropdown(c, y, "Middle Click", ns.ACTION_VALUES,
-        function() return ns.db.friends.clickActions.middleClick end,
-        function(v) ns.db.friends.clickActions.middleClick = v end, r)
+    y = AddClickActionsSection(c, r, y, "friends")
 
     c:SetHeight(math.abs(y) + 20)
 end
@@ -418,6 +428,9 @@ local function BuildGuildPanel(panel)
     y = AddDropdown(c, y, "Group By", ns.GUILD_GROUP_VALUES,
         function() return ns.db.guild.groupBy end,
         function(v) ns.db.guild.groupBy = v; if ns.GuildBroker then ns.GuildBroker:UpdateData() end end, r)
+    y = AddDropdown(c, y, "Then By", ns.GUILD_GROUP_VALUES,
+        function() return ns.db.guild.groupBy2 end,
+        function(v) ns.db.guild.groupBy2 = v; if ns.GuildBroker then ns.GuildBroker:UpdateData() end end, r)
 
     y = AddHeader(c, y, "Sorting")
     y = AddDropdown(c, y, "Sort By", { name = "Name", class = "Class", level = "Level", zone = "Zone", rank = "Rank", status = "Status" },
@@ -427,23 +440,7 @@ local function BuildGuildPanel(panel)
         function() return ns.db.guild.sortAscending end,
         function(v) ns.db.guild.sortAscending = v; if ns.GuildBroker then ns.GuildBroker:UpdateData() end end, r)
 
-    y = AddHeader(c, y, "Click Actions")
-    y = AddDescription(c, y, "Configure what happens when you click on a guild member in the tooltip.")
-    y = AddDropdown(c, y, "Left Click", ns.ACTION_VALUES,
-        function() return ns.db.guild.clickActions.leftClick end,
-        function(v) ns.db.guild.clickActions.leftClick = v end, r)
-    y = AddDropdown(c, y, "Right Click", ns.ACTION_VALUES,
-        function() return ns.db.guild.clickActions.rightClick end,
-        function(v) ns.db.guild.clickActions.rightClick = v end, r)
-    y = AddDropdown(c, y, "Shift + Left Click", ns.ACTION_VALUES,
-        function() return ns.db.guild.clickActions.shiftLeftClick end,
-        function(v) ns.db.guild.clickActions.shiftLeftClick = v end, r)
-    y = AddDropdown(c, y, "Shift + Right Click", ns.ACTION_VALUES,
-        function() return ns.db.guild.clickActions.shiftRightClick end,
-        function(v) ns.db.guild.clickActions.shiftRightClick = v end, r)
-    y = AddDropdown(c, y, "Middle Click", ns.ACTION_VALUES,
-        function() return ns.db.guild.clickActions.middleClick end,
-        function(v) ns.db.guild.clickActions.middleClick = v end, r)
+    y = AddClickActionsSection(c, r, y, "guild")
 
     c:SetHeight(math.abs(y) + 20)
 end
@@ -466,31 +463,23 @@ local function BuildCommunitiesPanel(panel)
         function() return ns.db.communities.showHintBar end,
         function(v) ns.db.communities.showHintBar = v; if ns.CommunitiesBroker then ns.CommunitiesBroker:UpdateData() end end, r)
 
+    y = AddHeader(c, y, "Grouping")
+    y = AddDropdown(c, y, "Group By", ns.COMMUNITIES_GROUP_VALUES,
+        function() return ns.db.communities.groupBy end,
+        function(v) ns.db.communities.groupBy = v; if ns.CommunitiesBroker then ns.CommunitiesBroker:UpdateData() end end, r)
+    y = AddDropdown(c, y, "Then By", ns.COMMUNITIES_GROUP_VALUES,
+        function() return ns.db.communities.groupBy2 end,
+        function(v) ns.db.communities.groupBy2 = v; if ns.CommunitiesBroker then ns.CommunitiesBroker:UpdateData() end end, r)
+
     y = AddHeader(c, y, "Sorting")
-    y = AddDropdown(c, y, "Sort By", { name = "Name", class = "Class", level = "Level", zone = "Zone" },
+    y = AddDropdown(c, y, "Sort By", { name = "Name", class = "Class", level = "Level", zone = "Zone", status = "Status" },
         function() return ns.db.communities.sortBy end,
         function(v) ns.db.communities.sortBy = v; if ns.CommunitiesBroker then ns.CommunitiesBroker:UpdateData() end end, r)
     y = AddCheckbox(c, y, "Ascending Order",
         function() return ns.db.communities.sortAscending end,
         function(v) ns.db.communities.sortAscending = v; if ns.CommunitiesBroker then ns.CommunitiesBroker:UpdateData() end end, r)
 
-    y = AddHeader(c, y, "Click Actions")
-    y = AddDescription(c, y, "Configure what happens when you click on a community member in the tooltip.")
-    y = AddDropdown(c, y, "Left Click", ns.ACTION_VALUES,
-        function() return ns.db.communities.clickActions.leftClick end,
-        function(v) ns.db.communities.clickActions.leftClick = v end, r)
-    y = AddDropdown(c, y, "Right Click", ns.ACTION_VALUES,
-        function() return ns.db.communities.clickActions.rightClick end,
-        function(v) ns.db.communities.clickActions.rightClick = v end, r)
-    y = AddDropdown(c, y, "Shift + Left Click", ns.ACTION_VALUES,
-        function() return ns.db.communities.clickActions.shiftLeftClick end,
-        function(v) ns.db.communities.clickActions.shiftLeftClick = v end, r)
-    y = AddDropdown(c, y, "Shift + Right Click", ns.ACTION_VALUES,
-        function() return ns.db.communities.clickActions.shiftRightClick end,
-        function(v) ns.db.communities.clickActions.shiftRightClick = v end, r)
-    y = AddDropdown(c, y, "Middle Click", ns.ACTION_VALUES,
-        function() return ns.db.communities.clickActions.middleClick end,
-        function(v) ns.db.communities.clickActions.middleClick = v end, r)
+    y = AddClickActionsSection(c, r, y, "communities")
 
     -- Dynamic section: community checkboxes (at bottom so resizing doesn't overlap static controls)
     y = AddHeader(c, y, "Enabled Communities")
@@ -507,15 +496,17 @@ local function BuildCommunitiesPanel(panel)
         wipe(dynamicWidgets)
 
         local dy = dynamicStart
-        local clubs = C_Club.GetSubscribedClubs() or {}
+        local clubs = C_Club.GetSubscribedClubs()
+        if type(clubs) ~= "table" then clubs = {} end
 
         local communityClubs = {}
         for _, clubInfo in ipairs(clubs) do
-            if clubInfo.clubType == Enum.ClubType.Character or clubInfo.clubType == Enum.ClubType.BattleNet then
+            if clubInfo.name
+               and (clubInfo.clubType == Enum.ClubType.Character or clubInfo.clubType == Enum.ClubType.BattleNet) then
                 table.insert(communityClubs, clubInfo)
             end
         end
-        table.sort(communityClubs, function(a, b) return a.name < b.name end)
+        table.sort(communityClubs, function(a, b) return (a.name or "") < (b.name or "") end)
 
         if #communityClubs == 0 then
             local noClubs = c:CreateFontString(nil, "OVERLAY", "GameFontDisable")

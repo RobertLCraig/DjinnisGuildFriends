@@ -16,12 +16,11 @@ FriendsBroker.totalCount = 0
 -- Tooltip frame and row pool
 local tooltipFrame = nil
 local rowPool = {}
-local ROW_HEIGHT = 16
-local TOOLTIP_PADDING = 10
-local HEADER_HEIGHT = 24
-
-local FIXED_TOP    = TOOLTIP_PADDING + HEADER_HEIGHT + 20  -- 54px: header + col headers row
-local FIXED_BOTTOM = TOOLTIP_PADDING * 2 + 18              -- 38px: hint bar + padding
+local ROW_HEIGHT      = ns.ROW_HEIGHT
+local TOOLTIP_PADDING = ns.TOOLTIP_PADDING
+local HEADER_HEIGHT   = ns.HEADER_HEIGHT
+local FIXED_TOP       = ns.FIXED_TOP
+local FIXED_BOTTOM    = ns.FIXED_BOTTOM
 
 local STATUS_STRINGS = {
     afk = "|cffffcc00[AFK]|r ",
@@ -241,42 +240,8 @@ end
 -- Sorting
 ---------------------------------------------------------------------------
 
-local SORT_FUNCTIONS = {
-    name = function(a, b) return a.name < b.name end,
-    class = function(a, b)
-        local ac = a.classFile or ""
-        local bc = b.classFile or ""
-        if ac == bc then return a.name < b.name end
-        return ac < bc
-    end,
-    level = function(a, b)
-        if a.level == b.level then return a.name < b.name end
-        return a.level < b.level
-    end,
-    zone = function(a, b)
-        if a.area == b.area then return a.name < b.name end
-        return a.area < b.area
-    end,
-    status = function(a, b)
-        local sa = a.afk and 2 or a.dnd and 3 or 1
-        local sb = b.afk and 2 or b.dnd and 3 or 1
-        if sa == sb then return a.name < b.name end
-        return sa < sb
-    end,
-}
-
 function FriendsBroker:SortFriends(friends)
-    local db = ns.db.friends
-    local sortFunc = SORT_FUNCTIONS[db.sortBy] or SORT_FUNCTIONS.name
-    local ascending = db.sortAscending
-
-    table.sort(friends, function(a, b)
-        if ascending then
-            return sortFunc(a, b)
-        else
-            return sortFunc(b, a)
-        end
-    end)
+    DGF:SortList(friends, ns.db.friends)
 end
 
 ---------------------------------------------------------------------------
@@ -562,6 +527,7 @@ function FriendsBroker:PopulateTooltip()
             RenderFriend(friend)
         end
     else
+        local groupBy2 = db.groupBy2 or "none"
         for _, groupName in ipairs(groupOrder) do
             local groupMembers = groups[groupName]
             if groupMembers and #groupMembers > 0 then
@@ -574,8 +540,27 @@ function FriendsBroker:PopulateTooltip()
                 yOffset = yOffset - 16
 
                 if not db.groupCollapsed[groupName] then
-                    for _, friend in ipairs(groupMembers) do
-                        RenderFriend(friend)
+                    if groupBy2 ~= "none" and groupBy2 ~= groupBy then
+                        local subGroups, subOrder = self:BuildGroups(groupMembers, groupBy2)
+                        for _, subName in ipairs(subOrder) do
+                            local subMembers = subGroups[subName]
+                            if subMembers and #subMembers > 0 then
+                                yOffset = yOffset - 2
+                                local subHdr = DGF:GetOrCreateGroupHeader(sc, groupName .. "|" .. subName)
+                                subHdr:ClearAllPoints()
+                                subHdr:SetPoint("TOPLEFT", sc, "TOPLEFT", 16, yOffset)
+                                subHdr:SetText(DGF:ColorText(subName .. " (" .. #subMembers .. ")", 0.8, 0.8, 0.6))
+                                subHdr:Show()
+                                yOffset = yOffset - 14
+                                for _, friend in ipairs(subMembers) do
+                                    RenderFriend(friend)
+                                end
+                            end
+                        end
+                    else
+                        for _, friend in ipairs(groupMembers) do
+                            RenderFriend(friend)
+                        end
                     end
                 end
             end
@@ -618,87 +603,15 @@ end
 ---------------------------------------------------------------------------
 
 function FriendsBroker:GetOrCreateGroupHeader(parent, name)
-    if not parent.groupHeaders then parent.groupHeaders = {} end
-    if parent.groupHeaders[name] then return parent.groupHeaders[name] end
-
-    local hdr = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    hdr:SetJustifyH("LEFT")
-    hdr:SetHeight(14)
-    hdr:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
-    parent.groupHeaders[name] = hdr
-    return hdr
+    return DGF:GetOrCreateGroupHeader(parent, name)
 end
 
 function FriendsBroker:BuildGroups(friends, groupBy)
-    if groupBy == "none" then return {}, {} end
-
-    local groups = {}
-    local groupSet = {}
-    local playerZone = GetRealZoneText() or ""
-
-    for _, friend in ipairs(friends) do
-        local groupNames = {}
-
-        if groupBy == "type" then
-            table.insert(groupNames, friend.isBNet and "Battle.net Friends" or "Character Friends")
-        elseif groupBy == "zone" then
-            if friend.area == playerZone and playerZone ~= "" then
-                table.insert(groupNames, "Same Zone: " .. playerZone)
-            else
-                table.insert(groupNames, friend.area ~= "" and friend.area or "Unknown")
-            end
-        elseif groupBy == "note" then
-            local tags = DGF:ParseNoteGroups(friend.notes)
-            if #tags > 0 then
-                for _, tag in ipairs(tags) do
-                    table.insert(groupNames, tag)
-                end
-            else
-                table.insert(groupNames, "Ungrouped")
-            end
-        else
-            table.insert(groupNames, "Other")
+    return DGF:BuildGroups(friends, groupBy, function(member, mode)
+        if mode == "type" then
+            return { member.isBNet and "Battle.net Friends" or "Character Friends" }
         end
-
-        for _, gn in ipairs(groupNames) do
-            if not groups[gn] then
-                groups[gn] = {}
-                groupSet[gn] = true
-            end
-            table.insert(groups[gn], friend)
-        end
-    end
-
-    local order = {}
-    for name in pairs(groupSet) do
-        table.insert(order, name)
-    end
-
-    if groupBy == "type" then
-        table.sort(order, function(a, b)
-            if a == "Battle.net Friends" then return true end
-            if b == "Battle.net Friends" then return false end
-            return a < b
-        end)
-    elseif groupBy == "zone" then
-        table.sort(order, function(a, b)
-            local aLocal = a:find("^Same Zone")
-            local bLocal = b:find("^Same Zone")
-            if aLocal and not bLocal then return true end
-            if bLocal and not aLocal then return false end
-            return a < b
-        end)
-    elseif groupBy == "note" then
-        table.sort(order, function(a, b)
-            if a == "Ungrouped" then return false end
-            if b == "Ungrouped" then return true end
-            return a < b
-        end)
-    else
-        table.sort(order)
-    end
-
-    return groups, order
+    end)
 end
 
 ---------------------------------------------------------------------------
@@ -709,7 +622,7 @@ FriendsBroker.hideTimer = nil
 
 function FriendsBroker:StartTooltipHideTimer()
     self:CancelTooltipHideTimer()
-    self.hideTimer = C_Timer.NewTimer(0.15, function()
+    self.hideTimer = C_Timer.NewTimer(ns.HIDE_DELAY, function()
         if tooltipFrame then tooltipFrame:Hide() end
         self.hideTimer = nil
     end)
@@ -730,21 +643,7 @@ function FriendsBroker:OnRowClick(row, button)
     local friend = row.friendData
     if not friend then return end
 
-    local db = ns.db.friends
-    local action
-
-    if button == "LeftButton" and IsShiftKeyDown() then
-        action = db.clickActions.shiftLeftClick
-    elseif button == "RightButton" and IsShiftKeyDown() then
-        action = db.clickActions.shiftRightClick
-    elseif button == "LeftButton" then
-        action = db.clickActions.leftClick
-    elseif button == "RightButton" then
-        action = db.clickActions.rightClick
-    elseif button == "MiddleButton" then
-        action = db.clickActions.middleClick
-    end
-
+    local action = DGF:ResolveClickAction(button, ns.db.friends.clickActions)
     if action and action ~= "none" then
         self:ExecuteAction(action, friend)
     end
@@ -753,74 +652,27 @@ end
 function FriendsBroker:ExecuteAction(action, friend)
     self:CancelTooltipHideTimer()
 
-    if action == "whisper" then
-        if tooltipFrame then tooltipFrame:Hide() end
-
-        if friend.isBNet then
-            local tellName = friend.accountName
-            if not tellName or tellName == "" then
-                tellName = friend.battleTag and friend.battleTag:match("^([^#]+)") or friend.name
-            end
-            if ChatFrameUtil and ChatFrameUtil.SendBNetTell then
-                ChatFrameUtil.SendBNetTell(tellName)
-            elseif ChatFrame_SendBNetTell then
-                ChatFrame_SendBNetTell(tellName)
-            else
-                ChatFrameUtil.OpenChat("/w " .. tellName .. " ")
-            end
-        else
-            local name = friend.fullName or friend.name
-            if name and name ~= "" then
-                if ChatFrameUtil and ChatFrameUtil.SendTell then
-                    ChatFrameUtil.SendTell(name)
-                elseif ChatFrame_SendTell then
-                    ChatFrame_SendTell(name)
-                else
-                    ChatFrameUtil.OpenChat("/w " .. name .. " ")
-                end
-            end
-        end
-        return
-
-    elseif action == "invite" then
-        if friend.isBNet and friend.gameAccountID then
-            BNInviteFriend(friend.gameAccountID)
-        else
-            local name = friend.fullName or friend.name
-            if name and name ~= "" then
-                C_PartyInfo.InviteUnit(name)
-            end
-        end
-
-    elseif action == "who" then
-        local query = friend.fullName or friend.name
-        if friend.isBNet and friend.realmName and friend.realmName ~= "" and friend.name then
-            query = friend.name .. "-" .. friend.realmName
-        end
-        C_FriendList.SendWho(query)
-
-    elseif action == "copyname" then
-        local name = friend.name
-        local realm = friend.realmName or ""
-        if not friend.isBNet and friend.fullName and friend.fullName ~= "" then
-            name = friend.fullName
-        elseif realm ~= "" then
-            name = name .. "-" .. realm
-        end
-        if not ChatFrame1EditBox:IsShown() then
-            ChatFrameUtil.OpenChat("")
-        end
-        ChatFrame1EditBox:Insert(name)
-
-    elseif action == "openfriends" then
-        ToggleFriendsFrame()
-
-    elseif action == "openguild" then
-        ToggleGuildFrame()
-
-    elseif action == "opencommunities" then
-        ToggleCommunitiesFrame()
+    local charName  = friend.name
+    local realmName = friend.realmName
+    if (not realmName or realmName == "") and not friend.isBNet then
+        realmName = GetRealmName()
     end
 
-    if tooltipFrame then tooltipFrame:Hide() end
+    -- For copyname, build the display name with realm
+    local fullName = friend.fullName or friend.name
+    if action == "copyname" then
+        if not friend.isBNet and friend.fullName and friend.fullName ~= "" then
+            fullName = friend.fullName
+        elseif (friend.realmName or "") ~= "" then
+            fullName = charName .. "-" .. friend.realmName
+        end
+    end
+
+    local bnet = friend.isBNet and {
+        accountName   = friend.accountName,
+        battleTag     = friend.battleTag,
+        gameAccountID = friend.gameAccountID,
+    } or nil
+
+    DGF:ExecuteAction(action, charName, realmName, fullName, bnet, tooltipFrame)
 end
