@@ -5,8 +5,6 @@ local DGF = ns.addon
 -- Widget helpers
 ---------------------------------------------------------------------------
 
-local dropdownCount = 0
-
 local function AddHeader(content, y, text)
     y = y - 8
     local header = content:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -46,15 +44,19 @@ local function AddSlider(content, y, label, min, max, step, getter, setter, refr
     text:SetPoint("TOPLEFT", content, "TOPLEFT", 18, y)
     text:SetText(label)
 
-    local slider = CreateFrame("Slider", nil, content, "OptionsSliderTemplate")
+    local slider = CreateFrame("Slider", nil, content)
     slider:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -6)
     slider:SetMinMaxValues(min, max)
     slider:SetValueStep(step)
     slider:SetObeyStepOnDrag(true)
     slider:SetWidth(240)
-    slider.Low:SetText("")
-    slider.High:SetText("")
-    if slider.Text then slider.Text:SetText("") end
+    slider:SetHeight(16)
+    slider:SetOrientation("HORIZONTAL")
+    slider:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+    local bg = slider:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture("Interface\\Buttons\\UI-SliderBar-Background")
+    bg:SetAllPoints()
+    bg:SetTexCoord(0, 1, 0, 1)
 
     local function FormatVal(v)
         if step < 1 then
@@ -141,18 +143,15 @@ local function AddSlider(content, y, label, min, max, step, getter, setter, refr
 end
 
 local function AddDropdown(content, y, label, values, getter, setter, refreshList)
-    dropdownCount = dropdownCount + 1
-    local ddName = "DGFDropdown" .. dropdownCount
-
     local text = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     text:SetPoint("TOPLEFT", content, "TOPLEFT", 18, y)
     text:SetText(label)
 
-    local dropdown = CreateFrame("Frame", ddName, content, "UIDropDownMenuTemplate")
-    dropdown:SetPoint("TOPLEFT", text, "BOTTOMLEFT", -16, -2)
-    UIDropDownMenu_SetWidth(dropdown, 240)
+    local dropdown = CreateFrame("DropdownButton", nil, content, "WowStyle1DropdownTemplate")
+    dropdown:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -2)
+    dropdown:SetWidth(200)
 
-    UIDropDownMenu_Initialize(dropdown, function()
+    dropdown:SetupMenu(function(owner, rootDescription)
         local sorted = {}
         for value, displayText in pairs(values) do
             table.insert(sorted, { value = value, text = displayText })
@@ -160,22 +159,15 @@ local function AddDropdown(content, y, label, values, getter, setter, refreshLis
         table.sort(sorted, function(a, b) return a.text < b.text end)
 
         for _, item in ipairs(sorted) do
-            local info = UIDropDownMenu_CreateInfo()
-            info.text = item.text
-            info.value = item.value
-            info.func = function(self)
-                setter(self.value)
-                UIDropDownMenu_SetText(dropdown, values[getter()] or "")
-            end
-            info.checked = (item.value == getter())
-            UIDropDownMenu_AddButton(info)
+            rootDescription:CreateButton(item.text, function()
+                setter(item.value)
+            end):SetIsSelected(function() return getter() == item.value end)
         end
     end)
-    UIDropDownMenu_SetText(dropdown, values[getter()] or "")
 
     if refreshList then
         table.insert(refreshList, function()
-            UIDropDownMenu_SetText(dropdown, values[getter()] or "")
+            dropdown:GenerateMenu()
         end)
     end
     return y - 54
@@ -233,7 +225,7 @@ end
 local function CreateScrollPanel()
     local panel = CreateFrame("Frame")
 
-    local scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+    local scroll = CreateFrame("ScrollFrame", nil, panel, "ScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 0, -5)
     scroll:SetPoint("BOTTOMRIGHT", -24, 5)
 
