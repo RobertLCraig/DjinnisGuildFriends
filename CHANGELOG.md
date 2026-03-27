@@ -19,3 +19,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Class-colored names, hint bar, row spacing, scale, width, and max-height controls.
 - Community enable/disable toggles per club.
 - Demo mode for UI screenshots.
+
+---
+
+## [1.0.1] - 2026-03-27
+
+### Fixed
+- Community broker: clubs whose server data hasn't loaded yet (fields
+  return WoW "secret" protected values instead of strings) are now
+  correctly skipped. The previous `if clubInfo.name` guard was truthy
+  for secret values; replaced with `type(clubInfo.name) == "string"`.
+- All C_Club API calls (`GetSubscribedClubs`, `GetClubMembers`,
+  `GetMemberInfo`) now use explicit `type() == "table"` guards instead
+  of `or {}` fallbacks, which don't catch WoW protected values.
+
+### Changed
+- Settings UI: migrated three deprecated WoW UI templates to their
+  current equivalents (required for WoW 12.0+ compatibility):
+  - `UIDropDownMenuTemplate` -> `WowStyle1DropdownTemplate` + `SetupMenu()`
+  - `OptionsSliderTemplate` -> bare `Slider` with manual setup
+  - `UIPanelScrollFrameTemplate` -> `ScrollFrameTemplate`
