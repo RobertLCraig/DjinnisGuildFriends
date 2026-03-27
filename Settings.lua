@@ -156,7 +156,12 @@ local function AddDropdown(content, y, label, values, getter, setter, refreshLis
         for value, displayText in pairs(values) do
             table.insert(sorted, { value = value, text = displayText })
         end
-        table.sort(sorted, function(a, b) return a.text < b.text end)
+        table.sort(sorted, function(a, b)
+            -- "none" always first
+            if a.value == "none" and b.value ~= "none" then return true end
+            if b.value == "none" and a.value ~= "none" then return false end
+            return a.text < b.text
+        end)
 
         for _, item in ipairs(sorted) do
             rootDescription:CreateButton(item.text, function()
@@ -183,17 +188,41 @@ local function AddEditBox(content, y, label, getter, setter, refreshList)
     editbox:SetSize(380, 20)
     editbox:SetAutoFocus(false)
     editbox:SetText(getter())
+
+    -- FontString overlay — always renders reliably inside scroll children
+    -- (EditBox text can vanish before the frame is fully visible).
+    local valText = editbox:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    valText:SetPoint("LEFT", editbox, "LEFT", 6, 0)
+    valText:SetPoint("RIGHT", editbox, "RIGHT", -6, 0)
+    valText:SetJustifyH("LEFT")
+    valText:SetText(getter())
+
+    editbox:SetScript("OnEditFocusGained", function(self)
+        valText:Hide()
+        self:SetText(getter())
+        self:HighlightText()
+    end)
+    editbox:SetScript("OnEditFocusLost", function(self)
+        self:HighlightText(0, 0)
+        valText:SetText(getter())
+        valText:Show()
+    end)
     editbox:SetScript("OnEnterPressed", function(self)
         setter(self:GetText())
+        valText:SetText(self:GetText())
         self:ClearFocus()
     end)
     editbox:SetScript("OnEscapePressed", function(self)
         self:SetText(getter())
+        valText:SetText(getter())
         self:ClearFocus()
     end)
 
     if refreshList then
-        table.insert(refreshList, function() editbox:SetText(getter()) end)
+        table.insert(refreshList, function()
+            editbox:SetText(getter())
+            valText:SetText(getter())
+        end)
     end
     return y - 44
 end
@@ -208,14 +237,22 @@ local function AddButton(content, y, label, onClick)
 end
 
 local function AddDescription(content, y, text)
+    y = y - 6
     local desc = content:CreateFontString(nil, "OVERLAY", "GameFontDisable")
     desc:SetPoint("TOPLEFT", content, "TOPLEFT", 18, y)
     desc:SetPoint("RIGHT", content, "RIGHT", -18, 0)
     desc:SetJustifyH("LEFT")
     desc:SetWordWrap(true)
+    desc:SetSpacing(2)
     desc:SetText(text)
+    -- Force width so GetStringHeight calculates wrapping reliably,
+    -- even before the content frame has resolved its final width.
+    local cw = content:GetWidth()
+    if cw and cw > 50 then
+        desc:SetWidth(cw - 36)
+    end
     local h = desc:GetStringHeight() or 14
-    return y - h - 8
+    return y - h - 12
 end
 
 ---------------------------------------------------------------------------

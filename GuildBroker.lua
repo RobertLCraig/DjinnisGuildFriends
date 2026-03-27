@@ -334,7 +334,6 @@ local function GetOrCreateRow(parent, index)
 
     row.noteText = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     row.noteText:SetPoint("LEFT", row.zoneText, "RIGHT", 4, 0)
-    row.noteText:SetPoint("RIGHT", row, "RIGHT", 0, 0)
     row.noteText:SetJustifyH("LEFT")
     row.noteText:SetWordWrap(false)
 
@@ -622,7 +621,8 @@ function GuildBroker:BuildGroups(members, groupBy)
         elseif mode == "level" then
             local lvl = member.level or 0
             local bracket
-            if     lvl >= 80 then bracket = "80+"
+            if     lvl >= 90 then bracket = "90+"
+            elseif lvl >= 80 then bracket = "80-89"
             elseif lvl >= 70 then bracket = "70-79"
             elseif lvl >= 60 then bracket = "60-69"
             elseif lvl >= 50 then bracket = "50-59"

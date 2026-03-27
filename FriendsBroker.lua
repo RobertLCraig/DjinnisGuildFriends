@@ -374,7 +374,6 @@ local function GetOrCreateRow(parent, index)
 
     row.noteText = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     row.noteText:SetPoint("LEFT", row.zoneText, "RIGHT", 4, 0)
-    row.noteText:SetPoint("RIGHT", row, "RIGHT", 0, 0)
     row.noteText:SetJustifyH("LEFT")
     row.noteText:SetWordWrap(false)
 
