@@ -104,42 +104,69 @@ function GuildBroker:UpdateData()
     local db = ns.db.guild
     local members = {}
 
-    self.guildName = GetGuildInfo("player") or ""
-    local totalMembers = GetNumGuildMembers()
-    self.totalCount = totalMembers or 0
+    local guildClubId = C_Club.GetGuildClubId()
+    if not guildClubId then
+        -- Guild club data not yet loaded; keep previous state
+        return
+    end
+
+    -- Guild name from club info
+    local clubInfo = C_Club.GetClubInfo(guildClubId)
+    if type(clubInfo) == "table" and type(clubInfo.name) == "string" then
+        self.guildName = clubInfo.name
+    end
+
+    -- Get all member IDs
+    local memberIds = C_Club.GetClubMembers(guildClubId)
+    if type(memberIds) ~= "table" then memberIds = {} end
+
+    self.totalCount = #memberIds
 
     local onlineCount = 0
-    for i = 1, totalMembers do
-        local name, rank, rankIndex, level, _, zone, note, officerNote,
-              connected, memberStatus, classFile, _, _, isMobile =
-              GetGuildRosterInfo(i)
-
-        if name then
-            local status = memberStatus or 0
-            local isOnline = connected or isMobile
-
-            local displayZone = zone or ""
-            if isMobile and not connected then
-                displayZone = REMOTE_CHAT or "Mobile"
-            end
+    for _, memberId in ipairs(memberIds) do
+        local mInfo = C_Club.GetMemberInfo(guildClubId, memberId)
+        if type(mInfo) == "table" and type(mInfo.name) == "string" then
+            local presence = mInfo.presence or Enum.ClubMemberPresence.Offline
+            local isOnline = (presence ~= Enum.ClubMemberPresence.Offline
+                          and presence ~= Enum.ClubMemberPresence.Unknown)
 
             if isOnline then
                 onlineCount = onlineCount + 1
+
+                local classFile = ""
+                if mInfo.classID then
+                    local cInfo = C_CreatureInfo.GetClassInfo(mInfo.classID)
+                    if cInfo then classFile = cInfo.classFile or "" end
+                end
+
+                local isMobile = (presence == Enum.ClubMemberPresence.OnlineMobile)
+                local isAFK = (presence == Enum.ClubMemberPresence.Away)
+                local isDND = (presence == Enum.ClubMemberPresence.Busy)
+                local status = isAFK and 1 or isDND and 2 or 0
+
+                local zone = ""
+                if type(mInfo.zone) == "string" then
+                    zone = mInfo.zone
+                end
+                if isMobile and mInfo.isRemoteChat then
+                    zone = "Remote Chat"
+                end
+
                 table.insert(members, {
-                    name      = name,
-                    level     = level or 0,
-                    classFile = classFile or "",
-                    area      = displayZone,
-                    rank      = rank or "",
-                    rankIndex = rankIndex or 0,
-                    connected = connected,
+                    name      = mInfo.name,
+                    level     = mInfo.level or 0,
+                    classFile = classFile,
+                    area      = zone,
+                    rank      = mInfo.guildRank or "",
+                    rankIndex = mInfo.guildRankOrder or 0,
+                    connected = not isMobile,
                     isMobile  = isMobile,
                     status    = status,
-                    afk       = (status == 1),
-                    dnd       = (status == 2),
-                    notes     = note or "",
-                    officerNote = officerNote or "",
-                    fullName  = name,
+                    afk       = isAFK,
+                    dnd       = isDND,
+                    notes     = mInfo.memberNote or "",
+                    officerNote = mInfo.officerNote or "",
+                    fullName  = mInfo.name,
                 })
             end
         end
@@ -408,7 +435,7 @@ function GuildBroker:PopulateTooltip()
         DGF:ColorText(" / " .. tostring(self.totalCount), 0.63, 0.63, 0.63)
     )
 
-    local motd = GetGuildRosterMOTD() or ""
+    local motd = C_GuildInfo.GetMOTD() or ""
     if motd ~= "" then
         tooltipFrame.motd:SetText("|cff888888MOTD: " .. motd .. "|r")
         tooltipFrame.motd:Show()

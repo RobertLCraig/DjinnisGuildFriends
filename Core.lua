@@ -463,16 +463,12 @@ function DGF:ExecuteAction(action, charName, realmName, fullName, bnet, tooltipF
             end
             if ChatFrameUtil and ChatFrameUtil.SendBNetTell then
                 ChatFrameUtil.SendBNetTell(tellName)
-            elseif ChatFrame_SendBNetTell then
-                ChatFrame_SendBNetTell(tellName)
             else
                 ChatFrameUtil.OpenChat("/w " .. tellName .. " ")
             end
         elseif fullName and fullName ~= "" then
             if ChatFrameUtil and ChatFrameUtil.SendTell then
                 ChatFrameUtil.SendTell(fullName)
-            elseif ChatFrame_SendTell then
-                ChatFrame_SendTell(fullName)
             else
                 ChatFrameUtil.OpenChat("/w " .. fullName .. " ")
             end
@@ -496,10 +492,7 @@ function DGF:ExecuteAction(action, charName, realmName, fullName, bnet, tooltipF
     elseif action == "copyname" then
         local copyName = fullName or charName or ""
         if copyName ~= "" then
-            if not ChatFrame1EditBox:IsShown() then
-                ChatFrameUtil.OpenChat("")
-            end
-            ChatFrame1EditBox:Insert(copyName)
+            ChatFrameUtil.OpenChat(copyName)
         end
 
     elseif action == "copyarmory" or action == "copyraiderio" or action == "copywarcraftlogs" then
@@ -566,10 +559,7 @@ function ns.CopyURL(url)
         C_Clipboard.SetText(url)
         ns.addon:Print("Copied: " .. url)
     else
-        if not ChatFrame1EditBox:IsShown() then
-            ChatFrameUtil.OpenChat("")
-        end
-        ChatFrame1EditBox:Insert(url)
+        ChatFrameUtil.OpenChat(url)
     end
 end
 

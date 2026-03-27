@@ -9,7 +9,18 @@
       "Bash(for lib:*)",
       "Bash(do)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:www.curseforge.com)"
+      "WebFetch(domain:www.curseforge.com)",
+      "Read(//mnt/**)",
+      "Bash(/dev/null -maxdepth 3 -type d -iname 'World of Warcraft')",
+      "Read(//c//**)",
+      "Bash(done)",
+      "Read(//c/Games/**)",
+      "Read(//d//**)",
+      "WebSearch",
+      "WebFetch(domain:warcraft.wiki.gg)",
+      "WebFetch(domain:wowpedia.fandom.com)",
+      "Bash(xargs grep:*)",
+      "Bash(grep -n \"BNGetNumFriends\\\\|BNInviteFriend\" /c/Dev/wow-ui-source/Interface/AddOns/Blizzard_APIDocumentationGenerated/*.lua)"
     ]
   }
 }
