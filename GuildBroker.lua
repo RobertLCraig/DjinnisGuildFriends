@@ -117,13 +117,15 @@ function GuildBroker:UpdateData()
     end
 
     -- Get all member IDs
+    -- C_Club.GetClubMembers returns a Blizzard "secret table" — using # on it
+    -- causes taint. Use clubInfo.memberCount for totalCount and iterate with
+    -- ipairs (which handles secret tables without taint).
     local memberIds = C_Club.GetClubMembers(guildClubId)
-    if type(memberIds) ~= "table" then memberIds = {} end
 
-    self.totalCount = #memberIds
+    self.totalCount = (type(clubInfo) == "table" and clubInfo.memberCount) or 0
 
     local onlineCount = 0
-    for _, memberId in ipairs(memberIds) do
+    for _, memberId in ipairs(memberIds or {}) do
         local mInfo = C_Club.GetMemberInfo(guildClubId, memberId)
         if type(mInfo) == "table" and type(mInfo.name) == "string" then
             local presence = mInfo.presence or Enum.ClubMemberPresence.Offline
