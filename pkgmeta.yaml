@@ -4,7 +4,11 @@
 ## The `ignore:` block below is this addon's SINGLE exclusion list. deploy.ps1
 ## parses it at runtime, so what reaches the game folder and what a packager
 ## would ship cannot drift apart. Add exclusions here, not in the script.
-## release.ps1 still keeps its own copy; that is the remaining drift risk.
+##
+## DemoMode.lua is NOT ignored, and that is a decision rather than an oversight.
+## release.ps1 used to exclude it while deploy.ps1 shipped it, so the zip and the
+## game folder disagreed. The .toc documents it at line 25 as a file you uncomment
+## to turn demo mode on, which cannot work if it was never shipped, so it ships.
 
 package-as: DjinnisGuildFriends
 
