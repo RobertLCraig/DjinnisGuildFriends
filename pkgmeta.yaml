@@ -1,0 +1,30 @@
+## CurseForge / WoWInterface automatic packager configuration
+## https://support.curseforge.com/support/solutions/articles/9000197281
+##
+## The `ignore:` block below is this addon's SINGLE exclusion list. deploy.ps1
+## parses it at runtime, so what reaches the game folder and what a packager
+## would ship cannot drift apart. Add exclusions here, not in the script.
+## release.ps1 still keeps its own copy; that is the remaining drift risk.
+
+package-as: DjinnisGuildFriends
+
+ignore:
+  - .git
+  - .gitignore
+  - .github
+  - .claude
+  - .agents
+  - CHANGELOG.md
+  - CLAUDE.md
+  - CURSEFORGE.md
+  - README.md
+  - RELEASE_NOTES.md
+  - deploy.ps1
+  - deploy.sh
+  - release.ps1
+  - pkgmeta.yaml
+  - docs
+  - releases
+  - DjinnisGuildFriendsDB.lua
+
+changelog: CHANGELOG.md
