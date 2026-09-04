@@ -535,7 +535,7 @@ local function BuildCommunitiesPanel(panel)
                 table.insert(communityClubs, clubInfo)
             end
         end
-        table.sort(communityClubs, function(a, b) return (a.name or "") < (b.name or "") end)
+        ns.SortClubsByName(communityClubs, function(entry) return entry end)
 
         if #communityClubs == 0 then
             local noClubs = c:CreateFontString(nil, "OVERLAY", "GameFontDisable")

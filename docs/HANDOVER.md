@@ -6,13 +6,14 @@
 
 **Stage:** superseded
 **Category:** addon
-**Status:** v1.0.5, `Interface: 120100`. The tree is clean and **three commits sit on `master`
-unpushed** to `github.com/RobertLCraig/DjinnisGuildFriends`. Last commit `2026-08-15`,
-"chore(12.1.0): declare Interface 120100 and invite over C_BattleNet".
+**Status:** v1.0.5, `Interface: 120100`. The tree is clean and every commit on `master` is unpushed
+to `github.com/RobertLCraig/DjinnisGuildFriends`; `git log origin/master..` gives the count.
 **It is NOT installed in the game, and that is deliberate rather than neglect.**
 `DjinnisDataTexts` states in its own handover that it absorbs and replaces this addon and migrates
-its saved variables on first load, so running both is running the same brokers twice.
-_Last updated: 2026-08-26 (board and handover created; no addon code was touched)_
+its saved variables on first load, so running both is running the same brokers twice. **Because it
+is not installed, nothing here can be checked in a client**, so addon code changed since 2026-08-15
+is unverified by anything but a syntax check and `docs/build/`.
+_Last updated: 2026-09-04 (card 0001: the 12.1 secret-name crash fixed in both club sorts)_
 
 ## Goal & success criteria
 **No PRD exists and one is probably not worth writing** now that the addon is superseded. What
@@ -44,7 +45,10 @@ client, which no agent can run.**
   mode looks like it works.
 - `Settings.lua` - the options panel and `DjinnisGuildFriendsDB`.
 - `Libs/` - bundled third-party libraries. **Tracked on purpose**, as `WoWAddons#0003` settled.
-- `Docs/` - the screenshots `README.md` links.
+- `docs/` - the screenshots `README.md` links, plus this file and the board.
+- `docs/build/check-club-sort.lua` - runs outside the game. It lifts the real function out of
+  `Core.lua` between the `[club-sort]` markers, so it fails if the fix is reverted. `pkgmeta.yaml`
+  keeps `docs/` out of every build, so nothing here ships.
 - `deploy.ps1` and `release.ps1` - this addon owns its own, with their own exclusion lists.
 - `CHANGELOG.md`, `RELEASE_NOTES.md` - **history, not a plan.**
 
@@ -57,22 +61,25 @@ client, which no agent can run.**
 ## Current state
 Out of the game and superseded. The 12.1.0 sweep updated the `.toc` and the `C_BattleNet` invite
 path and **checked nothing else in a client**, so the 12.1.0 line is a claim rather than a check.
-**Secret values are a live hazard for exactly this addon**: 12.1 can return an opaque value for a
-unit or player identifier, and a secret may not be compared, concatenated or used as a table key -
-which is what a roster keyed by name does all day. See `C:\Dev\WoWAddons\docs\DECISIONS.md`.
+**Secret values are a live hazard for exactly this addon, and no longer a theoretical one**: 12.1
+can return an opaque value for a name, and a secret may not be compared, concatenated or used as a
+table key, which is what a roster keyed by name does all day. It crashed the sibling addon on
+2026-09-04 and the same comparator was fixed here; `0001` has the detail. **`type(x) == "string"`
+does not detect a secret**, so every guard written that way passes one straight through. See
+`C:\Dev\WoWAddons\docs\DECISIONS.md`.
 
 ## What's next (in order)
-**`docs/board/` owns this.** The board is empty, and for a superseded addon that is close to
-correct: the honest next question is whether to retire the repository rather than what to build in
-it.
+**`docs/board/` owns this.** One card, `0001` in `ai-review/`, which is a fix carried over from the
+sibling addon and owes an adversarial pass. Beyond it the honest next question is whether to retire
+the repository rather than what to build in it.
 
 ## Blockers / open questions
 - **Should this be retired?** It is superseded, out of the game, and still carries three unpushed
   commits and a public GitHub repo. Retiring or archiving it is Rob's call. `GitHub is not a
   backup`: a retired repository is zipped whole into `C:\Dev\_archive` and verified before the
   original is deleted.
-- **Three unpushed commits on `master`.** `WoWAddons#0007` is the workspace card covering merge and
-  push across the repos; check it before pushing from here.
+- **`master` is unpushed.** `WoWAddons#0007` is the workspace card covering merge and push across
+  the repos; check it before pushing from here.
 
 ## How to pick up
 1. Read this file, then `docs/board/README.md` and any card in `docs/board/`.
@@ -92,8 +99,9 @@ it.
   the retire-or-keep question is open.
 
 ## Branch status
-One branch, `master`. Clean, three commits ahead of `origin/master`.
+One branch, `master`, no PR. Ahead of `origin/master`: `git log --oneline origin/master..` says by
+how much.
 
 ## Session log
-- **2026-08-26** Board and handover created, so this stops showing on `board:map` as an
-  unidentifiable nested folder. No addon code was touched.
+The commit history is the log: `git log --format='%ad %s%n%b'`. Rationale lives in
+`C:\Dev\WoWAddons\docs\DECISIONS.md`, and the work lives on the board.

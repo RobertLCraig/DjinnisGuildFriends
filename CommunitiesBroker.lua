@@ -415,9 +415,7 @@ function CommunitiesBroker:PopulateTooltip()
     for clubId, data in pairs(self.clubsCache) do
         table.insert(sortedClubs, data)
     end
-    table.sort(sortedClubs, function(a, b)
-        return (a.info.name or "") < (b.info.name or "")
-    end)
+    ns.SortClubsByName(sortedClubs, function(entry) return entry.info end)
 
     local function RenderMember(member)
         rowIdx = rowIdx + 1

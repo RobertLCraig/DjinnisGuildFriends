@@ -143,6 +143,36 @@ ns.FIXED_BOTTOM    = ns.TOOLTIP_PADDING * 2 + 18                  -- hint bar + 
 ns.HIDE_DELAY      = 0.15
 
 ---------------------------------------------------------------------------
+-- Club ordering
+---------------------------------------------------------------------------
+-- [club-sort] extracted verbatim by docs/build/check-club-sort.lua
+--- Order a list of clubs by name, tolerating 12.1 secret names.
+--- 12.1 can return clubInfo.name as a secret string: type() still reports
+--- "string", but comparing two of them throws and killed the settings panel
+--- in the sibling addon DjinnisDataTexts (2026-09-04). Probe each name once;
+--- if even one is unreadable the whole list falls back to clubId order,
+--- because a comparator that mixes the two orderings is inconsistent and
+--- table.sort then errors on that instead.
+--- @param list table      list of entries to sort in place
+--- @param GetInfo function entry -> the ClubInfo table holding name/clubId
+function ns.SortClubsByName(list, GetInfo)
+    local readable = true
+    for _, entry in ipairs(list) do
+        local name = GetInfo(entry).name
+        if not pcall(function() return name < name end) then
+            readable = false
+            break
+        end
+    end
+    table.sort(list, function(a, b)
+        local ia, ib = GetInfo(a), GetInfo(b)
+        if readable then return ia.name < ib.name end
+        return (ia.clubId or 0) < (ib.clubId or 0)
+    end)
+end
+-- [/club-sort]
+
+---------------------------------------------------------------------------
 -- Shared sort functions
 ---------------------------------------------------------------------------
 
