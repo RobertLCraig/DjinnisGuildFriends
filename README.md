@@ -10,15 +10,15 @@ Loosely inspired by the ElvUI Shadow & Light friends list.
 
 **Friends List — grouped by note tags**
 
-![Friends List grouped by tags](Docs/FriendsScreenshot-GroupByTags.png)
+![Friends List grouped by tags](docs/FriendsScreenshot-GroupByTags.png)
 
 **Friends List**
 
-![Friends List](Docs/FriendsScreenshot.png)
+![Friends List](docs/FriendsScreenshot.png)
 
 **Guild Roster**
 
-![Guild Roster](Docs/GuildScreenshot.png)
+![Guild Roster](docs/GuildScreenshot.png)
 
 ---
 
@@ -132,7 +132,7 @@ DjinnisGuildFriends/
 ├── Settings.lua                 -- Blizzard Settings UI
 ├── DemoMode.lua                 -- Optional: fake data for screenshots (see TOC)
 ├── README.md
-├── Docs/                        -- Screenshots
+├── docs/                        -- Screenshots
 └── Libs/
     ├── LibStub/
     ├── CallbackHandler-1.0/
