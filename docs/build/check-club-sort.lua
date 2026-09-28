@@ -19,7 +19,8 @@ f:close()
 local block = src:match("%-%- %[club%-sort%][^\n]*\n(.-)%-%- %[/club%-sort%]")
 assert(block, "no [club-sort] block in " .. SOURCE .. " -- was the fix removed?")
 
-local chunk = assert(load("local ns = {}\n" .. block .. "\nreturn ns.SortClubsByName", "club-sort"))
+-- loadstring: WoW is Lua 5.1, where load() takes a function, not a string.
+local chunk = assert((loadstring or load)("local ns = {}\n" .. block .. "\nreturn ns.SortClubsByName", "club-sort"))
 local SortClubsByName = assert(chunk(), "[club-sort] block defines no ns.SortClubsByName")
 
 local secretmt = {

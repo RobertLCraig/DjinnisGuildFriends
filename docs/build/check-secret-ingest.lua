@@ -18,6 +18,18 @@ secretmt.__lt, secretmt.__le, secretmt.__concat, secretmt.__len = boom, boom, bo
 secretmt.__index = boom
 local function secret() return setmetatable({}, secretmt) end
 local function isModel(v) return realtype(v) == "table" and getmetatable(v) == secretmt end
+-- Equality. Lua only calls __eq when both sides are tables sharing the same
+-- __eq function, so a secret compared with a plain number could never throw
+-- here. The presence enum is therefore modelled as tables sharing this __eq:
+-- then `presence == Enum.ClubMemberPresence.Online` throws when presence is a
+-- secret, as the game's does. (The same reference is equal before __eq is asked.)
+local function eq(a, b)
+    if isModel(a) or isModel(b) then boom() end
+    return false
+end
+secretmt.__eq = eq
+local enumMT = { __eq = eq }
+local function enum(n) return setmetatable({ n = n }, enumMT) end
 
 type = function(v) if isModel(v) then return "string" end return realtype(v) end
 issecretvalue = function(v) return isModel(v) end
@@ -29,9 +41,14 @@ CreateFrame = function() return setmetatable({}, frameMT) end
 LibStub = function() return { NewDataObject = function(_, _, t) return t end } end
 Enum = {
     ClubType = { BattleNet = 0, Character = 1, Guild = 2 },
-    ClubMemberPresence = { Unknown = 0, Online = 1, OnlineMobile = 2, Offline = 3, Away = 4, Busy = 5 },
+    ClubMemberPresence = { Unknown = enum(0), Online = enum(1), OnlineMobile = enum(2),
+                           Offline = enum(3), Away = enum(4), Busy = enum(5) },
 }
-C_CreatureInfo = { GetClassInfo = function() return { classFile = "DRUID" } end }
+-- A secret handed to a game API from tainted code throws, so the stub does too.
+C_CreatureInfo = { GetClassInfo = function(id)
+    if isModel(id) then boom() end
+    return { classFile = "DRUID" }
+end }
 local lockdown = false
 C_ChatInfo = { InChatMessagingLockdown = function() return lockdown end }
 
@@ -53,7 +70,7 @@ assert(loadfile("CommunitiesBroker.lua"))("DjinnisGuildFriends", ns)
 ns.db = { communities = ns.defaults.communities }
 local CB = ns.CommunitiesBroker
 
-local function online(name) return { name = name, presence = 1, level = 90, zone = "Silvermoon" } end
+local function online(name) return { name = name, presence = Enum.ClubMemberPresence.Online, level = 90, zone = "Silvermoon" } end
 
 -- 1. The ordinary path still works: readable club, readable members, sorted.
 clubs = { { clubId = "10", name = "Moonglade", clubType = 1 } }
@@ -83,13 +100,15 @@ ok, err = pcall(CB.UpdateData, CB)
 assert(ok, "a secret member name or presence must not throw -> " .. tostring(err))
 assert(#CB.clubsCache["10"].members == 1, "only the readable member is kept")
 
--- 4. Secret zone, note and level are replaced, never stored.
+-- 4. Secret zone, note, level and classID are replaced, never stored.
 local shady = online("Dee"); shady.zone = secret(); shady.memberNote = secret(); shady.level = secret()
+shady.classID = secret()
 members = { ["10"] = { shady } }
 ok, err = pcall(CB.UpdateData, CB)
 assert(ok, "secret member fields must not throw -> " .. tostring(err))
 local m = CB.clubsCache["10"].members[1]
 assert(m.area == "" and m.notes == "" and m.level == 0, "secret fields fall back to plain values")
+assert(m.classFile == nil, "a secret classID resolves to no class, not a crash")
 
 -- 5. In messaging lockdown nothing is read and the last roster is held.
 local before = CB.clubsCache
