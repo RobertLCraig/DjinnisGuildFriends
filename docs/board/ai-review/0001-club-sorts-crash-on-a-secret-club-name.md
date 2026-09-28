@@ -38,9 +38,11 @@ throws.
 
 ## Not this card
 
-- The member-name sorts in `ns.SORT_FUNCTIONS`. Member names can be secret too,
-  but the ingest loop in `CommunitiesBroker:UpdateData()` sits inside a pcall, so
-  a secret name never reaches those comparators. Worth a card if that goes.
+- The member-name sorts in `ns.SORT_FUNCTIONS` themselves. (The original note
+  here said the `UpdateData()` ingest loop sits inside a pcall. That is true in
+  `DjinnisDataTexts` and was false here; see the 2026-09-29 comment. A secret
+  name now never reaches those comparators because ingest drops it.)
+- The Friends and Guild brokers. Same class of hazard, not this card.
 - Installing or deploying this addon. It is dormant on purpose.
 - The `Docs/` to `docs/` rename and the handover staged in this repo. Older work,
   unrelated, already staged before this change.
@@ -54,6 +56,13 @@ throws.
 - [x] #3 IF some club names are readable and some are not, THEN THE APP SHALL
       order the whole list by `clubId` rather than mixing the two orderings.
 - [x] #4 IF a club has no name at all, THE APP SHALL NOT throw.
+- [x] #5 (added 2026-09-29) WHEN a club name, member name, member presence,
+      zone, note or level comes back secret, THE BROKER SHALL ingest without
+      throwing and SHALL NOT store the secret where the tooltip concatenates,
+      compares or table-keys it. proves: `lua docs/build/check-secret-ingest.lua`, checks 2-4
+- [x] #6 (added 2026-09-29) WHILE `C_ChatInfo.InChatMessagingLockdown()` is
+      true, THE BROKER SHALL hold its last known roster and read nothing from
+      `C_Club`. proves: `lua docs/build/check-secret-ingest.lua`, check 5
 <!-- AC:END -->
 
 ## Tasks
@@ -82,3 +91,40 @@ report rather than one seen here. Run the check with
 path, so it can be pointed at a doctored copy to prove it goes red. The version
 of this check in `DjinnisDataTexts` was seen to fail against the pre-fix
 comparator with the exact error Rob saw.
+
+**2026-09-29** Adversarial review (unattended agent, not the builder). Verdict: **the sort fix holds, but
+the card's promise did not.** Found and fixed a real gap; the card stays in `ai-review/` because the
+reviewer wrote the fix, and the builder passing the builder is what this lane exists to stop. The
+next reviewer should attack commit `fix(communities): drop secret values at ingest` and then move
+the card.
+
+What held: `ns.SortClubsByName` is sound. `clubId` is `NeverSecret = true` in `ClubInfo`
+(`Blizzard_APIDocumentationGenerated/ClubDocumentation.lua`) and `Nilable = false`, so the
+fallback key is always comparable. `check-club-sort.lua` passes; its mixed-list case is the right trap.
+
+What broke: this card's "Not this card" said the `UpdateData()` member loop sits inside a pcall.
+It does in `DjinnisDataTexts`; here it never did (no pcall anywhere outside the sort probe). And a
+secret club name that survived the sort went straight into the tooltip: `clubName .. " (" ..`
+concatenation, and `DGF:GetOrCreateGroupHeader(sc, clubName)` keying `parent.groupHeaders[name]`.
+So hovering the broker, the very check the card asked for, would still have thrown. Every `C_Club`
+read used there (`GetSubscribedClubs`, `GetClubMembers`, `GetMemberInfo`) is
+`SecretInChatMessagingLockdown`, and `ClubMemberInfo.presence`, `name`, `zone`-style fields are not
+`NeverSecret`, so member data is exposed the same way.
+
+Fixed: `Core.lua` gains `ns.IsSecret` (`issecretvalue`) and `ns.InMessagingLockdown`
+(`C_ChatInfo.InChatMessagingLockdown`, both checked in the generated docs, neither deprecated).
+`UpdateData` now returns early in lockdown, holding the last roster; skips a club whose name is
+secret; skips a member whose name or presence is secret; replaces a secret level, zone or note with a
+plain fallback. New `docs/build/check-secret-ingest.lua` loads the real `Core.lua` and
+`CommunitiesBroker.lua` with the game stubbed (a secret answers `"string"` to `type()`, as the
+game's does). Five checks pass; against the pre-fix files it goes red on check 2. Criteria #5 and
+#6 were added for it. The settings panel path needed nothing more: it only sorts (fixed) and
+`SetText`s the name, keyed by `clubId`.
+
+Security: **weakest point** is any string the game hands back reaching a comparison or table key;
+ingest is now the one gate for this broker. **Unchecked:** `FriendsBroker.lua` and `GuildBroker.lua`
+were not reviewed for the same fault (fenced out above). **Leaks:** nothing; no data leaves the client.
+
+Also noticed, not fixed: the default `rightClick = "invite"` click action acts on a right-click, which
+breaks the standing rule that right-click opens a menu. Moot while the addon is superseded and
+uninstalled; belongs in the retire-or-not question on the handover.
