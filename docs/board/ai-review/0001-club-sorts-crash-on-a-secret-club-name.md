@@ -75,7 +75,8 @@ throws.
 - [ ] Deploy. **Deliberately not done**: the addon is not installed and
       `bin/deploy.ps1` would newly install it.
 - [ ] In-game check, owed only if the addon is installed again
-- [ ] Adversarial and security pass
+- [ ] Adversarial and security pass (two done 2026-09-29; the second changed the test harness,
+      so a third, on `d36e954`, is owed)
 
 ## Links
 
@@ -128,3 +129,60 @@ were not reviewed for the same fault (fenced out above). **Leaks:** nothing; no 
 Also noticed, not fixed: the default `rightClick = "invite"` click action acts on a right-click, which
 breaks the standing rule that right-click opens a menu. Moot while the addon is superseded and
 uninstalled; belongs in the retire-or-not question on the handover.
+
+**2026-09-29** Second adversarial review (unattended agent; did not write `6f55732`). Verdict: **the
+addon code in `6f55732` holds. Its proving test did not: two of its guards could be deleted and the
+test stayed green.** I fixed the test, so the card stays in `ai-review/` for a third reviewer. That
+review is small. Check the harness change in commit `d36e954`, then move the card to
+`human-review/`.
+
+What I attacked: every field `UpdateData` reads, followed to where it gets compared, concatenated,
+used as a table key or passed to a FontString. The APIs were checked against
+`wow-ui-source` 12.1.0 (69933), `Blizzard_APIDocumentationGenerated`.
+- `ClubInfo` (`ClubDocumentation.lua`): `clubId` and `clubType` are `NeverSecret`, so the
+  `clubType ==` test and the `clubsData[clubId]` / `disabledClubs[clubId]` keys are safe. `name`
+  is not, and it is filtered out before it reaches the cache.
+- `ClubMemberInfo`: `isSelf` is `NeverSecret`. `name`, `presence`, `level`, `zone`, `memberNote`
+  and `classID` are not, and each one is either filtered out or run through `Readable`. After
+  that, the sorts (`ns.SORT_FUNCTIONS`), `BuildGroups` / `GroupByZone` / `ParseNoteGroups`, the
+  group-header keys, the `..` in `PopulateTooltip` and `ExecuteAction`'s `fullName:match` only
+  ever see plain values. `GetRealZoneText` returns a `cstring` with no secret flag.
+- `C_ChatInfo.InChatMessagingLockdown` returns a plain `bool`. `GetSubscribedClubs`,
+  `GetClubMembers` and `GetMemberInfo` all carry `SecretInChatMessagingLockdown = true`, so the
+  early return covers the dungeon case. `clubsCache` starts as `{}`, so a first hover while in
+  lockdown shows "No community members online" rather than failing on `pairs(nil)`.
+- `issecretvalue` is in `FrameScriptDocumentation.lua` and is tagged
+  `SecretArguments = "AllowedWhenUntainted"`, the same tag 3,573 functions carry. That tag could be
+  read as "a tainted caller may not pass it a secret". But third-party AceGUI calls
+  `issecretvalue(text)` from tainted code (a copy sits under `DjinnisClassProfiles/research/`), so
+  it is usable in practice. This is noted, not proven.
+
+What broke, and I fixed (test only, no addon code changed):
+1. **`check-secret-ingest.lua` could not fail for presence or classID.** Deleting
+   `not ns.IsSecret(mInfo.presence)` or the `Readable` around `classID` left all five checks
+   green. The reason: in Lua, a table compared with a number is simply `false` and no metamethod
+   runs, so the model secret never threw on `presence == Enum...` or `classID == 0`. The game's
+   secret does throw. The harness now models the presence enum as tables that share one `__eq`
+   with the secret, and its `C_CreatureInfo.GetClassInfo` stub throws when given a secret. Check 4
+   now also feeds in a secret `classID`.
+   Mutation result: all eight guards in `UpdateData` (club name, member name, presence, level,
+   zone, note, classID, lockdown) now turn the check red when removed, under both Lua 5.1 and 5.4.
+   It is still green on the current code, and still red against `2d886d7`.
+2. **`check-club-sort.lua` would not run under Lua 5.1**, which is the Lua version WoW uses. It
+   called `load(string)`. It now uses `(loadstring or load)`. It passes under 5.1 and 5.4, and it
+   still goes red on a comparator that always compares names.
+
+Not covered by any check here: `PopulateTooltip` itself is never run by the harness. It is safe
+only because ingest keeps secrets out of the cache. A future field added to the member table
+without going through `Readable` would get past this.
+
+Security: **weakest point** is still any `C_Club` field that is added later without going through
+`Readable`. Ingest is the one gate, and the tooltip trusts it completely. **Unchecked:** the
+`Settings.lua` club list reads `GetSubscribedClubs` with no lockdown gate. That is safe as far as
+the docs go (`clubType` and `clubId` are `NeverSecret`, the sort falls back to `clubId`, and
+`SetText` is `AllowedWhenTainted`), but it has not been exercised. Friends and Guild are still
+fenced out. **Leaks:** nothing leaves the client.
+
+Owed in game once this reaches `human-review/`: install the addon and hover the Communities broker
+in a city, then again inside a dungeon. Neither should throw. In the dungeon it should show the
+roster from before you entered. Also open the settings panel's community list in both places.
