@@ -172,6 +172,21 @@ function ns.SortClubsByName(list, GetInfo)
 end
 -- [/club-sort]
 
+--- True when v is a 12.1 secret value. type() answers "string" for a secret
+--- string, so this is the only test that tells them apart (issecretvalue is
+--- documented in Blizzard_APIDocumentationGenerated/FrameScriptDocumentation.lua).
+function ns.IsSecret(v)
+    return issecretvalue ~= nil and issecretvalue(v) == true
+end
+
+--- True while every C_Club read is secret. GetSubscribedClubs, GetClubMembers
+--- and GetMemberInfo are all SecretInChatMessagingLockdown, and
+--- C_ChatInfo.InChatMessagingLockdown is the documented test for that state.
+function ns.InMessagingLockdown()
+    return C_ChatInfo ~= nil and C_ChatInfo.InChatMessagingLockdown ~= nil
+        and C_ChatInfo.InChatMessagingLockdown() == true
+end
+
 ---------------------------------------------------------------------------
 -- Shared sort functions
 ---------------------------------------------------------------------------

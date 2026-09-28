@@ -89,6 +89,13 @@ local function ClassFileFromID(classID)
     return info and info.classFile or nil
 end
 
+--- v, or fallback when v is nil or a 12.1 secret value.
+local function Readable(v, fallback)
+    -- IsSecret first: even == nil is a comparison, and a secret refuses those.
+    if ns.IsSecret(v) or v == nil then return fallback end
+    return v
+end
+
 --- Check if a club member is considered online
 local function IsPresenceOnline(presence)
     return presence == Enum.ClubMemberPresence.Online
@@ -108,27 +115,39 @@ end
 
 function CommunitiesBroker:UpdateData()
     local db = ns.db.communities
+
+    -- Every C_Club read below is SecretInChatMessagingLockdown (dungeon, raid,
+    -- encounter, PvP match). Hold the last known roster rather than reading
+    -- secrets into it; the next update after lockdown refreshes it.
+    if ns.InMessagingLockdown() then return end
+
     local clubs = C_Club.GetSubscribedClubs()
-    if type(clubs) ~= "table" then clubs = {} end
+    if type(clubs) ~= "table" or ns.IsSecret(clubs) then clubs = {} end
     local totalOnline = 0
     local clubsData = {}
 
     for _, clubInfo in ipairs(clubs) do
-        -- Only character and BNet communities (skip guild — handled by GuildBroker)
-        -- Skip clubs whose data hasn't loaded yet — unloaded fields return a
-        -- WoW "secret" protected value, which is truthy but not a string.
-        if type(clubInfo.name) == "string"
+        -- Only character and BNet communities; the guild has its own broker.
+        -- A secret club name is skipped: type() answers "string" for a secret, so
+        -- it needs ns.IsSecret, and the tooltip later concatenates the name and
+        -- keys its group headers by it, both of which throw on a secret.
+        if type(clubInfo.name) == "string" and not ns.IsSecret(clubInfo.name)
            and (clubInfo.clubType == Enum.ClubType.Character or clubInfo.clubType == Enum.ClubType.BattleNet)
            and self:IsClubEnabled(clubInfo.clubId) then
 
             local memberIds = C_Club.GetClubMembers(clubInfo.clubId)
+            if ns.IsSecret(memberIds) then memberIds = nil end
             local onlineMembers = {}
 
             for _, memberId in ipairs(memberIds or {}) do
                 local mInfo = C_Club.GetMemberInfo(clubInfo.clubId, memberId)
-                if type(mInfo) == "table" and IsPresenceOnline(mInfo.presence) then
-                    local classFile = ClassFileFromID(mInfo.classID)
-                    local memberName = mInfo.name or "Unknown"
+                -- A secret name would throw at :find below and in every member
+                -- sort; a secret presence would throw in IsPresenceOnline.
+                if type(mInfo) == "table" and type(mInfo.name) == "string"
+                   and not ns.IsSecret(mInfo.name) and not ns.IsSecret(mInfo.presence)
+                   and IsPresenceOnline(mInfo.presence) then
+                    local classFile = ClassFileFromID(Readable(mInfo.classID, nil))
+                    local memberName = mInfo.name
 
                     -- Strip realm suffix for display
                     local displayName = memberName
@@ -140,10 +159,12 @@ function CommunitiesBroker:UpdateData()
                     table.insert(onlineMembers, {
                         name        = displayName,
                         fullName    = memberName,
-                        level       = mInfo.level or 0,
+                        -- zone and note become group-header table keys, and level
+                        -- is compared by the sorts, so none may be a secret.
+                        level       = Readable(mInfo.level, 0),
                         classFile   = classFile,
-                        area        = mInfo.zone or "",
-                        notes       = mInfo.memberNote or "",
+                        area        = Readable(mInfo.zone, ""),
+                        notes       = Readable(mInfo.memberNote, ""),
                         afk         = (mInfo.presence == Enum.ClubMemberPresence.Away),
                         dnd         = (mInfo.presence == Enum.ClubMemberPresence.Busy),
                         isMobile    = (mInfo.presence == Enum.ClubMemberPresence.OnlineMobile),
