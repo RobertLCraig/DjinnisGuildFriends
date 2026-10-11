@@ -186,3 +186,13 @@ fenced out. **Leaks:** nothing leaves the client.
 Owed in game once this reaches `human-review/`: install the addon and hover the Communities broker
 in a city, then again inside a dungeon. Neither should throw. In the dungeon it should show the
 roster from before you entered. Also open the settings panel's community list in both places.
+
+**2026-09-29** Third review, of `d36e954` only (test code, no addon code). The fake secret now
+throws on `==` through a shared `__eq`, and the presence enum is modelled as tables that share it,
+so a deleted presence guard goes red. The normal path still matches because Lua treats the same
+table reference as equal before it asks `__eq`. `GetClassInfo` throws on a secret, as the game's
+does. Both checks pass under Lua 5.1: `secret ingest: all 5 checks passed`, `club sort: all 5
+checks passed`. Nothing found. Moved to `human-review/` for the in-game check above. The addon is
+dormant and not installed, so that check waits until Rob chooses to install it.
+
+**2026-10-11** Clear-down (attended, agent). Committed the third-review entry above, which was sitting uncommitted (the diff was that entry only). All six criteria are ticked and the addon is dormant and not installed, so nothing is owed in game unless it is installed again. Moved to `done/`.
