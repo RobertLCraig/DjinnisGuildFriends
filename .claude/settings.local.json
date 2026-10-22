@@ -22,5 +22,8 @@
       "Bash(xargs grep:*)",
       "Bash(grep -n \"BNGetNumFriends\\\\|BNInviteFriend\" /c/Dev/wow-ui-source/Interface/AddOns/Blizzard_APIDocumentationGenerated/*.lua)"
     ]
+  },
+  "enabledPlugins": {
+    "ponytail@ponytail": false
   }
 }
